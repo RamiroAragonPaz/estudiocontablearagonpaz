@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="logoBlack2.ico" />
   <title>Aragón Paz · Estudio Contable</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
@@ -10,6 +11,25 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    /* ── SweetAlert2 custom theme — Aragón Paz palette ── */
+    .swal-ap { font-family: 'Montserrat', sans-serif !important; border-radius: 16px !important; }
+    .swal2-popup.swal-ap { background: #faf8f3 !important; border: 1px solid rgba(201,169,110,0.25) !important; box-shadow: 0 20px 60px rgba(17,17,16,0.18) !important; }
+    .swal2-popup.swal-ap .swal2-title { color: #111110 !important; font-size: 1.1rem !important; font-weight: 700 !important; }
+    .swal2-popup.swal-ap .swal2-html-container { color: #666 !important; font-size: 0.9rem !important; }
+    .swal2-popup.swal-ap .swal2-confirm { background: #c9a96e !important; border-radius: 8px !important; font-weight: 600 !important; font-family: 'Montserrat',sans-serif !important; color: #fff !important; }
+    .swal2-popup.swal-ap .swal2-confirm:hover { background: #b8955a !important; }
+    .swal2-popup.swal-ap .swal2-cancel { background: #f0ede6 !important; border-radius: 8px !important; font-weight: 600 !important; font-family: 'Montserrat',sans-serif !important; color: #111110 !important; }
+    .swal2-popup.swal-ap .swal2-icon.swal2-success { border-color: #22c55e !important; }
+    .swal2-popup.swal-ap .swal2-icon.swal2-success [class^=swal2-success-line] { background: #22c55e !important; }
+    .swal2-popup.swal-ap .swal2-icon.swal2-error { border-color: #ef4444 !important; }
+    .swal2-popup.swal-ap .swal2-icon.swal2-warning { border-color: #c9a96e !important; color: #c9a96e !important; }
+    .swal2-popup.swal-ap .swal2-icon.swal2-question { border-color: #c9a96e !important; color: #c9a96e !important; }
+    .swal2-timer-progress-bar { background: #c9a96e !important; }
+    .swal2-toast.swal-ap-toast { font-family: 'Montserrat', sans-serif !important; background: #111110 !important; color: #e2c48a !important; border-radius: 10px !important; }
+    .swal2-toast.swal-ap-toast .swal2-title { color: #e2c48a !important; }
+  </style>
 
   <!-- Firebase -->
   <script type="module">
@@ -303,10 +323,12 @@
     /* ── MAIN CONTENT ──────────────────────────────── */
     .main {
       margin-left: var(--sidebar);
+      transition: margin-left 0.25s cubic-bezier(.4,0,.2,1);
       flex: 1;
       padding: 32px 36px;
       min-height: 100vh;
       overflow-x: hidden;
+      transition: margin-left 0.25s cubic-bezier(.4,0,.2,1);
     }
     .page-header {
       display: flex;
@@ -778,7 +800,7 @@
       user-select: none;
     }
     .sidebar-toggle:hover { background: var(--gold2); transform: scale(1.1); }
-    .main { transition: padding-left 0.05s; }
+    .main.collapsed { margin-left: var(--sidebar-collapsed) !important; }
     .client-row { cursor: pointer; transition: background 0.15s; }
     .client-row:hover td { background: rgba(201,169,110,0.05); }
     .sidebar.collapsed .nav-item { position: relative; }
@@ -868,68 +890,10 @@ const initials = (name) => {
 const FB = () => window.__FB__;
 
 // ── MOCK DATA ────────────────────────────────────────
-const MOCK_CLIENTS = [
-  {
-    id: 'mock-1', nombre: 'TechSolutions S.R.L.', tipo: 'sociedad',
-    cuit: '30-71234567-8', email: 'admin@techsolutions.com.ar',
-    telefono: '+54 11 4521-8890', responsable: 'Lucas Martínez',
-    servicio: 'Pack Integral (Fiscal+Laboral)',
-    honorario: 450000, estado: 'activo',
-    domicilio: 'Av. Corrientes 1550, CABA', empleados: 12,
-    desde: '2024-03-01', notas: 'Cliente premium. Paga puntual. 12 empleados en planilla.',
-    ultimoPago: '2026-03-01', saldoPendiente: 0,
-    claves: { arca_usuario:'30-71234567-8', arca_clave:'TechAFIP2026', arba_usuario:'techsolutions', arba_clave:'ArbaPass01', muni_usuario:'', muni_clave:'' }
-  },
-  {
-    id: 'mock-2', nombre: 'Valentina Rodríguez', tipo: 'responsable_inscripto',
-    cuit: '27-35678912-4', email: 'vale.rodriguez@gmail.com',
-    telefono: '+54 221 555-2341', responsable: '',
-    servicio: 'Asesoría Fiscal (Personas)',
-    honorario: 195000, estado: 'activo',
-    domicilio: 'Calle 47 N° 820, La Plata', empleados: 0,
-    desde: '2025-01-15', notas: 'Psicóloga. Consulta de consultorio privado. Ingresos variables.',
-    ultimoPago: '2026-02-15', saldoPendiente: 195000,
-    claves: { arca_usuario:'27-35678912-4', arca_clave:'Vale2026!', arba_usuario:'', arba_clave:'', muni_usuario:'', muni_clave:'' }
-  },
-  {
-    id: 'mock-3', nombre: 'Diego Fernández', tipo: 'monotributista',
-    cuit: '20-28456789-0', email: 'diegof.dev@gmail.com',
-    telefono: '+54 221 554-9821', responsable: '',
-    servicio: 'Contabilidad Básica',
-    honorario: 155000, estado: 'activo',
-    domicilio: 'Calle 13 N° 430, La Plata', empleados: 0,
-    desde: '2025-06-01', notas: 'Desarrollador web freelance. Categoría F monotributo. Posible recategorización en junio.',
-    ultimoPago: '2026-03-01', saldoPendiente: 0,
-    claves: { arca_usuario:'20-28456789-0', arca_clave:'DiegoMono26', arba_usuario:'', arba_clave:'', muni_usuario:'', muni_clave:'' }
-  }
-];
+const MOCK_CLIENTS = [];
 
-const CALENDARIO_2026 = [
-  // MARZO 2026
-  { id:'cal-m1', nombre:'Sueldos y Cargas Sociales (Mar)',         tipo:'laboral', fecha:'2026-03-10', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-m2', nombre:'IIBB Mensual - TechSolutions (Mar)',      tipo:'fiscal',  fecha:'2026-03-16', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-m3', nombre:'IVA Mensual - TechSolutions (Mar)',       tipo:'fiscal',  fecha:'2026-03-18', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-m4', nombre:'Monotributo Mensual - Diego (Mar)',       tipo:'fiscal',  fecha:'2026-03-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
-  { id:'cal-m5', nombre:'Monotributo Mensual - Valentina (Mar)',   tipo:'fiscal',  fecha:'2026-03-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
-  // ABRIL 2026
-  { id:'cal-1',  nombre:'Sueldos y Cargas Sociales (Abr)',         tipo:'laboral', fecha:'2026-04-10', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-5',  nombre:'IIBB Mensual - TechSolutions (Abr)',      tipo:'fiscal',  fecha:'2026-04-15', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-3',  nombre:'IVA Mensual - TechSolutions (Abr)',       tipo:'fiscal',  fecha:'2026-04-18', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-4',  nombre:'Monotributo Mensual - Diego (Abr)',       tipo:'fiscal',  fecha:'2026-04-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
-  { id:'cal-8',  nombre:'Monotributo Mensual - Valentina (Abr)',   tipo:'fiscal',  fecha:'2026-04-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
-  // MAYO 2026
-  { id:'cal-may1',nombre:'Sueldos y Cargas Sociales (May)',        tipo:'laboral', fecha:'2026-05-11', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-may2',nombre:'IIBB Mensual - TechSolutions (May)',     tipo:'fiscal',  fecha:'2026-05-15', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-9',  nombre:'IVA Mensual - TechSolutions (May)',       tipo:'fiscal',  fecha:'2026-05-18', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
-  { id:'cal-10', nombre:'Monotributo Mensual - Diego (May)',       tipo:'fiscal',  fecha:'2026-05-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
-  { id:'cal-may3',nombre:'Monotributo Mensual - Valentina (May)',  tipo:'fiscal',  fecha:'2026-05-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
-  // JUNIO 2026
-  { id:'cal-6',  nombre:'Bienes Personales / Ganancias PF',        tipo:'fiscal',  fecha:'2026-06-16', clientes:'Valentina Rodríguez',      prioridad:'alta',  completado:false },
-  { id:'cal-2',  nombre:'Ganancias Personas Físicas 4ta Cat.',     tipo:'fiscal',  fecha:'2026-06-16', clientes:'Valentina Rodríguez',      prioridad:'alta',  completado:false },
-  { id:'cal-jun1',nombre:'Monotributo Mensual - Diego (Jun)',      tipo:'fiscal',  fecha:'2026-06-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
-  { id:'cal-jun2',nombre:'Monotributo Mensual - Valentina (Jun)',  tipo:'fiscal',  fecha:'2026-06-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
-  { id:'cal-jun3',nombre:'Recategorización Semestral Monotributo', tipo:'fiscal',  fecha:'2026-06-20', clientes:'Todos los monotributistas',prioridad:'alta',  completado:false },
-];
+const CALENDARIO_2026 = [];
+// Vencimientos se cargan desde Firestore
 
 // ── GOOGLE ICON ──────────────────────────────────────
 const GoogleIcon = () => (
@@ -1220,23 +1184,53 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
 }
 
 // ── TRIBUTOS SEED (seeds Firebase collection on first load) ───────────
+// ── CUIT-dependent due-date offsets (official ARCA calendar) ─────────
+// Each key = tributo id. base = nominal day. offsets[lastDigit] = delta days.
+const CUIT_OFFSETS = {
+  iva:       { base:18, offsets:{0:0,1:0, 2:1,3:1, 4:2,5:2, 6:7,7:7, 8:8,9:8} },
+  // IVA: CUIT 0-1→día18, 2-3→19, 4-5→20, 6-7→25, 8-9→26
+  f931:      { base:9,  offsets:{0:0,1:0,2:0,3:0, 4:1,5:1,6:1, 7:2,8:2,9:2} },
+  // F.931: CUIT 0-3→día9, 4-6→10, 7-9→11
+  autonomos: { base:5,  offsets:{0:0,1:0,2:0,3:0, 4:1,5:1,6:1, 7:4,8:4,9:4} },
+  // Autónomos: CUIT 0-3→día5, 4-6→6, 7-9→9
+};
+
+// ── Resolve exact business day for a tributo given a CUIT and month ───
+// Handles CUIT-dependent offsets, Monotributo special months, and skips weekends.
+function resolveVencDia(tributo, cuitStr, year, month0) {
+  const lastDigit = parseInt((cuitStr||'').replace(/[-\s]/g,'').slice(-1)) || 0;
+  // CUIT-dependent tributos (IVA, F.931, Autónomos)
+  if (tributo.cuitDependiente && CUIT_OFFSETS[tributo.cuitKey]) {
+    const { base, offsets } = CUIT_OFFSETS[tributo.cuitKey];
+    return base + (offsets[lastDigit] ?? 0);
+  }
+  // Monotributo special: June→22, Sep/Dec→21, rest→20
+  if (tributo.id === 'monotributo') {
+    if (month0 === 5)  return 22;
+    if (month0 === 8 || month0 === 11) return 21;
+    return 20;
+  }
+  return tributo.dia || 20;
+}
+
 const TRIBUTOS_SEED = [
-  { id:'iva',        label:'IVA Mensual',                categoria:'Nacional',  organismo:'ARCA',     periodicidad:'mensual',  dia:18 },
-  { id:'monotributo',label:'Monotributo Mensual',        categoria:'Nacional',  organismo:'ARCA',     periodicidad:'mensual',  dia:20 },
-  { id:'ganancias',  label:'Ganancias Personas Físicas', categoria:'Nacional',  organismo:'ARCA',     periodicidad:'anual',    dia:null },
-  { id:'bienes_pers',label:'Bienes Personales',          categoria:'Nacional',  organismo:'ARCA',     periodicidad:'anual',    dia:null },
-  { id:'f931',       label:'F.931 - Empleadores',        categoria:'Nacional',  organismo:'ARCA',     periodicidad:'mensual',  dia:10 },
-  { id:'recat_mono', label:'Recategorización Monotributo',categoria:'Nacional', organismo:'ARCA',     periodicidad:'semestral',dia:20 },
-  { id:'iibb',       label:'IIBB Mensual',               categoria:'Provincial',organismo:'ARBA',     periodicidad:'mensual',  dia:16 },
-  { id:'iibb_cm',    label:'IIBB Convenio Multilateral', categoria:'Provincial',organismo:'ARBA',     periodicidad:'mensual',  dia:22 },
-  { id:'iibb_anual', label:'IIBB Declaración Anual',    categoria:'Provincial',organismo:'ARBA',     periodicidad:'anual',    dia:null },
-  { id:'imp_sellos', label:'Impuesto de Sellos',         categoria:'Provincial',organismo:'ARBA',     periodicidad:'variable', dia:null },
-  { id:'imp_inmob',  label:'Impuesto Inmobiliario',      categoria:'Provincial',organismo:'ARBA',     periodicidad:'cuotas',   dia:null },
-  { id:'automotores',label:'Patente / Automotores',      categoria:'Provincial',organismo:'ARBA',     periodicidad:'cuotas',   dia:null },
-  { id:'tasas_muni', label:'Tasas Municipales',          categoria:'Municipal', organismo:'Municipal',periodicidad:'bimestral',dia:null },
-  { id:'sueldos',    label:'Sueldos y Cargas Sociales',  categoria:'Laboral',   organismo:'ARCA',     periodicidad:'mensual',  dia:10 },
-  { id:'art',        label:'ART (Seg. de Riesgos)',      categoria:'Laboral',   organismo:'ART',      periodicidad:'mensual',  dia:15 },
-  { id:'soc_anual',  label:'Balance / Estados Contables',categoria:'Societario',organismo:'IGJ/DPPJ', periodicidad:'anual',   dia:null },
+  { id:'iva',        label:'IVA Mensual',                 categoria:'Nacional',  organismo:'ARCA',      periodicidad:'mensual',  dia:18, cuitDependiente:true,  cuitKey:'iva',       nota:'Vencimiento varía según último dígito CUIT: 0-1→18, 2-3→19, 4-5→20, 6-7→25, 8-9→26' },
+  { id:'monotributo',label:'Monotributo Mensual',         categoria:'Nacional',  organismo:'ARCA',      periodicidad:'mensual',  dia:20, cuitDependiente:false, nota:'Día 20 todos los CUIT. Junio→22, Sep/Dic→21' },
+  { id:'f931',       label:'F.931 - Empleadores (SUSS)',  categoria:'Nacional',  organismo:'ARCA',      periodicidad:'mensual',  dia:9,  cuitDependiente:true,  cuitKey:'f931',      nota:'Vencimiento varía: CUIT 0-3→día 9, 4-6→10, 7-9→11' },
+  { id:'autonomos',  label:'Autónomos Mensual',           categoria:'Nacional',  organismo:'ARCA',      periodicidad:'mensual',  dia:5,  cuitDependiente:true,  cuitKey:'autonomos', nota:'Vencimiento varía: CUIT 0-3→día 5, 4-6→6, 7-9→9' },
+  { id:'ganancias',  label:'Ganancias Personas Físicas',  categoria:'Nacional',  organismo:'ARCA',      periodicidad:'anual',    dia:null, nota:'Junio, según terminación CUIT (días 13–17)' },
+  { id:'bienes_pers',label:'Bienes Personales',           categoria:'Nacional',  organismo:'ARCA',      periodicidad:'anual',    dia:null, nota:'Junio, según terminación CUIT (días 20–24)' },
+  { id:'recat_mono', label:'Recategorización Monotributo',categoria:'Nacional',  organismo:'ARCA',      periodicidad:'semestral',dia:20,  nota:'Enero y Julio — mes posterior al semestre evaluado' },
+  { id:'iibb',       label:'IIBB Mensual',                categoria:'Provincial',organismo:'ARBA',      periodicidad:'mensual',  dia:16,  nota:'Ingresos Brutos directos PBA' },
+  { id:'iibb_cm',    label:'IIBB Convenio Multilateral',  categoria:'Provincial',organismo:'ARBA',      periodicidad:'mensual',  dia:22,  nota:'Contribuyentes CM05' },
+  { id:'iibb_anual', label:'IIBB Declaración Anual',      categoria:'Provincial',organismo:'ARBA',      periodicidad:'anual',    dia:null },
+  { id:'imp_sellos', label:'Impuesto de Sellos',          categoria:'Provincial',organismo:'ARBA',      periodicidad:'variable', dia:null },
+  { id:'imp_inmob',  label:'Impuesto Inmobiliario',       categoria:'Provincial',organismo:'ARBA',      periodicidad:'cuotas',   dia:null },
+  { id:'automotores',label:'Patente / Automotores',       categoria:'Provincial',organismo:'ARBA',      periodicidad:'cuotas',   dia:null },
+  { id:'tasas_muni', label:'Tasas Municipales',           categoria:'Municipal', organismo:'Municipal', periodicidad:'bimestral',dia:null },
+  { id:'sueldos',    label:'Sueldos y Cargas Sociales',   categoria:'Laboral',   organismo:'ARCA',      periodicidad:'mensual',  dia:10 },
+  { id:'art',        label:'ART (Seg. de Riesgos)',       categoria:'Laboral',   organismo:'ART',       periodicidad:'mensual',  dia:15 },
+  { id:'soc_anual',  label:'Balance / Estados Contables', categoria:'Societario',organismo:'IGJ/DPPJ',  periodicidad:'anual',    dia:null },
 ];
 const TRIBUTO_CATEGORIAS  = ['Nacional','Provincial','Municipal','Laboral','Societario','Otro'];
 const TRIBUTO_ORGANISMOS  = ['ARCA','ARBA','Municipal','ART','IGJ/DPPJ','Justicia','Otro'];
@@ -1273,7 +1267,8 @@ function ClientNotas({ cliente }) {
   };
 
   const del = async (id) => {
-    if (!confirm('¿Eliminar esta nota?')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar esta nota', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,`clients/${cliente.id}/notas`,id)); } catch(e){}
     setNotas(prev => prev.filter(n => n.id!==id));
   };
@@ -1393,33 +1388,56 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   }, [clients]);
   const backToList = () => setView('list');
 
-  // auto-generate vencimientos for new client based on assigned tributos
+  // ── CUIT-aware vencimiento generator ────────────────────────────────
+  // Given a client + their assigned tributos, produces dated vencimientos
+  // for the next 12 months, respecting CUIT-dependent due dates (IVA, F.931, etc.)
   const generateVencimientosForClient = async (client, tributos) => {
     if (!tributos || !tributos.length) return [];
-    const now = new Date();
+    const now   = new Date();
+    const cuit  = (client.cuit || '').replace(/[-\s]/g, '');
     const generated = [];
-    // generate for current month + next 5 months
-    for (let m = 0; m < 6; m++) {
-      const yr  = now.getMonth() + m > 11 ? now.getFullYear() + 1 : now.getFullYear();
-      const mon = (now.getMonth() + m) % 12;
+
+    for (let m = 0; m < 12; m++) {
+      const totalMon = now.getMonth() + m;
+      const yr  = now.getFullYear() + Math.floor(totalMon / 12);
+      const mon = totalMon % 12;                   // 0-indexed month
+
       tributos.forEach(t => {
         const per = t.periodicidad || 'mensual';
-        if (per !== 'mensual' && per !== 'bimestral') return; // only recurring
-        if (per === 'bimestral' && m % 2 !== 0) return;
-        const day = t.dia || 20;
-        const maxDay = new Date(yr, mon+1, 0).getDate();
-        const d = Math.min(day, maxDay);
-        const fecha = `${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const venc = {
-          nombre: `${t.label} - ${client.nombre}`,
-          tipo: ['Laboral'].includes(t.categoria) ? 'laboral' : 'fiscal',
-          fecha, clientes: client.nombre, prioridad: 'media', completado: false,
-          autoGenerado: true, clienteId: client.id, tributoId: t.id,
-        };
-        generated.push(venc);
+        // skip non-recurring
+        if (per === 'variable' || per === 'cuotas' || per === 'anual') return;
+        if (per === 'semestral'     && m % 6 !== 0) return;
+        if (per === 'bimestral'     && m % 2 !== 0) return;
+        if (per === 'cuatrimestral' && m % 4 !== 0) return;
+
+        // Resolve the exact day using global resolveVencDia (uses CUIT_OFFSETS)
+        const rawDay = resolveVencDia(t, cuit, yr, mon);
+        const maxDay = new Date(yr, mon + 1, 0).getDate();
+        const day    = Math.min(rawDay, maxDay);
+        const fecha  = `${yr}-${String(mon+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+        // For CUIT-dependent tributos, append last digit so it's traceable
+        const cuitTag = t.cuitDependiente && cuit.length
+          ? ` · CUIT ···${cuit.slice(-1)}`
+          : '';
+        const nombre = `${t.label}${cuitTag} — ${client.nombre}`;
+
+        generated.push({
+          nombre,
+          tipo:       t.categoria === 'Laboral' ? 'laboral' : 'fiscal',
+          fecha,
+          clientes:   client.nombre,
+          prioridad:  t.categoria === 'Nacional' ? 'alta' : 'media',
+          completado: false,
+          autoGenerado: true,
+          clienteId:  client.id,
+          tributoId:  t.id,
+          notas:      t.nota || '',
+        });
       });
     }
-    // save to firebase + state
+
+    // Persist to Firestore + local state
     const saved = [];
     for (const v of generated) {
       try {
@@ -1478,10 +1496,12 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
     }
     setSelected(savedClient);
     setSaving(false); setView('detail');
+    Swal.fire({ icon:'success', title: view==='new'?'Cliente creado':'Cliente actualizado', timer:1500, showConfirmButton:false, customClass:{popup:'swal-ap'} });
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este cliente?')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar este cliente', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'clients',id)); } catch(e) {}
     setClients(prev => prev.filter(c => c.id !== id));
     setSelected(null); setView('list');
@@ -1975,39 +1995,37 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
       notas: form.notas||'',
       tipo: 'ingreso',
     };
-    // Save cobro
-    let saved;
     try {
-      const fb = FB();
-      const ref = await fb.addDoc(fb.collection(fb.db,'cobros'), {...cobro, createdAt:fb.serverTimestamp()});
-      saved = {...cobro, id:ref.id};
-    } catch(e) {
-      saved = {...cobro, id:'local-'+Date.now()};
-    }
-    if (editItem) {
-      // UPDATE existing
-      try { await FB().updateDoc(FB().doc(FB().db,'cobros',editItem.id), cobro); } catch(e){}
-      setCobros(prev=>prev.map(x=>x.id===editItem.id?{...cobro,id:editItem.id}:x));
-    } else {
-      // CREATE new
-      let saved;
-      try {
-        const fb = FB();
-        const ref = await fb.addDoc(fb.collection(fb.db,'cobros'), {...cobro, createdAt:fb.serverTimestamp()});
-        saved = {...cobro, id:ref.id};
-      } catch(e) {
-        saved = {...cobro, id:'local-'+Date.now()};
+      if (editItem) {
+        // UPDATE existing
+        try { await FB().updateDoc(FB().doc(FB().db,'cobros',editItem.id), cobro); } catch(e){}
+        setCobros(prev=>prev.map(x=>x.id===editItem.id?{...cobro,id:editItem.id}:x));
+        Swal.fire({ icon:'success', title:'Cobro actualizado', timer:1500, showConfirmButton:false, customClass:{popup:'swal-ap'} });
+      } else {
+        // CREATE new
+        let saved;
+        try {
+          const fb = FB();
+          const ref = await fb.addDoc(fb.collection(fb.db,'cobros'), {...cobro, createdAt:fb.serverTimestamp()});
+          saved = {...cobro, id:ref.id};
+        } catch(e) {
+          saved = {...cobro, id:'local-'+Date.now()};
+        }
+        setCobros(prev=>[saved,...prev]);
+        // Update client saldo only on new cobro
+        if (cliente && Number(form.monto) > 0) {
+          const newSaldo = Math.max(0, (cliente.saldoPendiente||0) - Number(form.monto));
+          try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
+          setClients(prev=>prev.map(c=>c.id===form.clienteId?{...c,saldoPendiente:newSaldo}:c));
+        }
+        Swal.fire({ icon:'success', title:'Cobro registrado', text: fmt(Number(form.monto))+' · '+cliente?.nombre, timer:1800, showConfirmButton:false, customClass:{popup:'swal-ap'} });
       }
-      setCobros(prev=>[saved,...prev]);
-      // Update client saldo only on new cobro
-      if (cliente) {
-        const newSaldo = Math.max(0, (cliente.saldoPendiente||0) - Number(form.monto));
-        try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
-        setClients(prev=>prev.map(c=>c.id===form.clienteId?{...c,saldoPendiente:newSaldo}:c));
-      }
+    } finally {
+      setSaving(false);
+      setModal(false);
+      setEditItem(null);
+      setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''});
     }
-    setSaving(false); setModal(false); setEditItem(null);
-    setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''});
   };
 
   const openEdit = (cobro) => {
@@ -2018,7 +2036,8 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este cobro? Esta acción no se puede deshacer.')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar este cobro ', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'cobros',id)); } catch(e){}
     setCobros(prev=>prev.filter(x=>x.id!==id));
   };
@@ -2349,7 +2368,8 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este vencimiento?')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar este vencimiento', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'vencimientos',id)); } catch(e) {}
     setVencimientos(prev=>prev.filter(x=>x.id!==id));
   };
@@ -2730,7 +2750,8 @@ function Finanzas({ cobros, setCobros, facturas, setFacturas }) {
   const soloMeses = [...new Set(allMovimientos.map(m=>m.fecha?.slice(0,7)).filter(Boolean))].sort().reverse();
 
   const handleDelete = async (mov) => {
-    if (!confirm(`¿Eliminar este movimiento de ${fmt(mov.monto)}? Esta acción no se puede deshacer.`)) return;
+    const result = await Swal.fire({ title:'¿Eliminar movimiento?', text:`Eliminar ${fmt(mov.monto)} — esta acción no se puede deshacer.`, icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     if (mov._tipo === 'cobro') {
       try { await FB().deleteDoc(FB().doc(FB().db,'cobros',mov.id)); } catch(e){}
       setCobros(prev=>prev.filter(c=>c.id!==mov.id));
@@ -2909,7 +2930,8 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
   };
 
   const handleDeleteFac = async (id) => {
-    if (!confirm('¿Eliminar esta factura/cargo?')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar esta factura/cargo', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'facturas',id)); } catch(e){}
     setFacturas(prev=>prev.filter(x=>x.id!==id));
   };
@@ -3063,7 +3085,8 @@ function Tareas({ tareas, setTareas, clients }) {
   };
 
   const del = async (id) => {
-    if (!confirm('¿Eliminar esta tarea?')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar esta tarea', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db, 'tareas', id)); } catch(e) {}
     setTareas(prev => prev.filter(x => x.id !== id));
   };
@@ -3254,70 +3277,275 @@ function Notas({ notas, setNotas, clients }) {
 
 // ── IMPORTAR VENCIMIENTOS ────────────────────────────
 function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose }) {
-  const [tab, setTab]         = useState('manual');
-  const [csvText, setCsvText] = useState('');
+  const [tab, setTab]           = useState('ics');
+  const [csvText, setCsvText]   = useState('');
+  const [icsText, setIcsText]   = useState('');
   const [manualRows, setManualRows] = useState([
     {nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}
   ]);
-  const [saving, setSaving]   = useState(false);
+  const [saving, setSaving]     = useState(false);
   const [imported, setImported] = useState(0);
+  const [preview, setPreview]   = useState([]);
+  const [icsPreview, setIcsPreview] = useState([]);
 
   const addRow = () => setManualRows(r=>[...r,{nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}]);
   const upRow  = (i,k,v) => setManualRows(r=>r.map((x,j)=>j===i?{...x,[k]:v}:x));
   const delRow = (i) => setManualRows(r=>r.filter((_,j)=>j!==i));
 
+  // ── Parse standard CSV ───────────────────────────────
   const parseCSV = (text) => {
     const lines = text.trim().split('\n').filter(l=>l.trim());
-    return lines.map(l=>{
+    const isHeader = lines[0] && lines[0].toLowerCase().includes('nombre');
+    return lines.slice(isHeader?1:0).map(l=>{
       const parts = l.split(',').map(p=>p.trim().replace(/^"|"$/g,''));
       return { nombre:parts[0]||'', tipo:parts[1]||'fiscal', fecha:parts[2]||'', clientes:parts[3]||'', prioridad:parts[4]||'media' };
     }).filter(r=>r.nombre&&r.fecha);
   };
 
+  // ── Parse ICS / iCalendar file ───────────────────────
+  const parseICS = (text) => {
+    const events = [];
+    const blocks = text.split('BEGIN:VEVENT');
+    blocks.slice(1).forEach(block => {
+      const getVal = (key) => {
+        const rx = new RegExp(key + '[^:]*:(.+)');
+        const m = block.match(rx);
+        return m ? m[1].replace(/\r/g,'').trim() : '';
+      };
+      const summary  = getVal('SUMMARY');
+      const dtstart  = getVal('DTSTART');
+      const desc     = getVal('DESCRIPTION');
+      const location = getVal('LOCATION');
+      if (!summary || !dtstart) return;
+
+      // Parse date — handles DTSTART:20260318 and DTSTART;TZID=...:20260318T000000
+      let dateStr = dtstart.replace(/T.*/, '');
+      if (dateStr.length === 8) {
+        dateStr = dateStr.slice(0,4)+'-'+dateStr.slice(4,6)+'-'+dateStr.slice(6,8);
+      }
+
+      // Guess tipo from summary/description
+      const lowSum = (summary+desc).toLowerCase();
+      const tipo = lowSum.includes('sueldo')||lowSum.includes('f.931')||lowSum.includes('931')||lowSum.includes('art ')||lowSum.includes('laboral') ? 'laboral'
+        : lowSum.includes('societ')||lowSum.includes('balance')||lowSum.includes('igj') ? 'societario'
+        : 'fiscal';
+
+      // Guess prioridad
+      const prioridad = lowSum.includes('iva')||lowSum.includes('ganancias')||lowSum.includes('arca')||lowSum.includes('suss')||lowSum.includes('bienes') ? 'alta' : 'media';
+
+      // Extract organismo hint
+      const org = lowSum.includes('arba') ? 'ARBA'
+        : lowSum.includes('arca')||lowSum.includes('afip') ? 'ARCA'
+        : lowSum.includes('art ') ? 'ART'
+        : '';
+
+      events.push({
+        nombre: summary,
+        tipo,
+        fecha: dateStr,
+        clientes: '',
+        prioridad,
+        notas: [desc,location,org].filter(Boolean).join(' · ').slice(0,200),
+      });
+    });
+    return events;
+  };
+
+  // ── Smart CUIT client matching ───────────────────────
+  const smartMatchClients = (row) => {
+    const cl = (row.clientes||'').toLowerCase();
+    const digitMatch = cl.match(/(\d)\s*[-–oa]\s*(\d)/);
+    if (digitMatch) {
+      const lo = parseInt(digitMatch[1]), hi = parseInt(digitMatch[2]);
+      const range = []; for(let d=lo;d<=hi;d++) range.push(d);
+      return clients.filter(c => range.includes(parseInt((c.cuit||'').replace(/[-\s]/g,'').slice(-1))));
+    }
+    if (cl.includes('monotribut')) return clients.filter(c=>c.tipo==='monotributista');
+    if (cl.includes('todos')) return clients;
+    if (cl.includes('empleador')) return clients.filter(c=>c.empleados>0);
+    const exact = clients.filter(c=>c.nombre.toLowerCase().includes(cl));
+    return exact;
+  };
+
+  // Build smart preview from CSV
+  const buildSmartPreview = (text) => {
+    const rows = parseCSV(text);
+    const expanded = [];
+    rows.forEach(row => {
+      const matched = smartMatchClients(row);
+      if (!matched.length) {
+        expanded.push({...row, _display: row.clientes||'General', _matched:[]});
+      } else {
+        matched.forEach(c => expanded.push({...row, clientes:c.nombre, clienteId:c.id, _display:c.nombre, _matched:[c.nombre]}));
+      }
+    });
+    return expanded;
+  };
+
+  // ── Handle file drop / input ─────────────────────────
+  const handleICSFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      setIcsText(text);
+      const parsed = parseICS(text);
+      setIcsPreview(parsed);
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  React.useEffect(() => {
+    if (tab === 'smart' && csvText) setPreview(buildSmartPreview(csvText));
+  }, [csvText, tab]);
+
+  // ── Import rows into Firestore + state ───────────────
   const handleImport = async (rows) => {
     const valid = rows.filter(r=>r.nombre&&r.fecha);
-    if (!valid.length) return;
+    if (!valid.length) {
+      Swal.fire({ icon:'warning', title:'Sin datos', text:'No hay filas válidas para importar.', customClass:{popup:'swal-ap'} });
+      return;
+    }
     setSaving(true);
-    let count=0;
-    const newVenc=[];
+    let count = 0;
+    const newVenc = [];
     for (const r of valid) {
-      const v = {...r, completado:false};
+      const { _display, _matched, ...v } = r;
+      const rec = {...v, completado:false};
       try {
-        const fb=FB();
-        const ref=await fb.addDoc(fb.collection(fb.db,'vencimientos'),{...v,createdAt:fb.serverTimestamp()});
-        newVenc.push({...v,id:ref.id}); count++;
+        const fb = FB();
+        const ref = await fb.addDoc(fb.collection(fb.db,'vencimientos'), {...rec, createdAt:fb.serverTimestamp()});
+        newVenc.push({...rec, id:ref.id}); count++;
       } catch(e) {
-        newVenc.push({...v,id:'local-'+Date.now()+count}); count++;
+        newVenc.push({...rec, id:'local-'+Date.now()+count}); count++;
       }
     }
     setVencimientos(prev=>[...prev,...newVenc]);
-    setImported(count); setSaving(false);
-    if (tab==='csv') setCsvText('');
-    else setManualRows([{nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}]);
+    setSaving(false);
+    setImported(count);
+    setCsvText(''); setPreview([]); setIcsText(''); setIcsPreview([]);
+    if (tab==='manual') setManualRows([{nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}]);
+    Swal.fire({ icon:'success', title:`${count} vencimiento${count!==1?'s':''} importado${count!==1?'s':''}`, timer:2000, showConfirmButton:false, customClass:{popup:'swal-ap'} });
+    onClose();
   };
+
+  const TIPO_BADGE = { fiscal:'badge-gold', laboral:'badge-blue', societario:'badge-gray' };
 
   return (
     <Modal title="📥 Importar Vencimientos" onClose={onClose} wide
       footer={<>
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cerrar</button>
-        <button className="btn btn-gold" disabled={saving}
-          onClick={()=>handleImport(tab==='csv'?parseCSV(csvText):manualRows)}>
-          {saving?'⏳ Importando...':'📥 Importar'}
-        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+        {tab!=='info' && (
+          <button className="btn btn-gold" disabled={saving}
+            onClick={()=>handleImport(
+              tab==='ics'    ? icsPreview  :
+              tab==='smart'  ? preview     :
+              tab==='csv'    ? parseCSV(csvText) :
+              manualRows
+            )}>
+            {saving ? '⏳ Importando...' : `📥 Importar${tab==='ics'&&icsPreview.length?' ('+icsPreview.length+')':tab==='smart'&&preview.length?' ('+preview.length+')':''}`}
+          </button>
+        )}
       </>}>
-      {imported>0 && (
-        <div style={{padding:'10px 14px',background:'var(--green2)',borderRadius:8,marginBottom:16,color:'#065f46',fontSize:13,borderLeft:'3px solid var(--green)'}}>
-          ✓ {imported} vencimiento{imported>1?'s':''} importado{imported>1?'s':''} correctamente
-        </div>
-      )}
-      <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content'}}>
-        {[['manual','✏️ Carga manual'],['csv','📄 CSV / Texto'],['info','ℹ️ Ayuda']].map(([t,l])=>(
-          <button key={t} className={`tab ${tab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setTab(t)}>{l}</button>
+
+      <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content',flexWrap:'wrap'}}>
+        {[['ics','📅 Archivo .ics'],['smart','🧠 Smart CSV'],['manual','✏️ Manual'],['csv','📄 CSV simple'],['info','ℹ️ Ayuda']].map(([t,l])=>(
+          <button key={t} className={`tab ${tab===t?'active':''}`} style={{minWidth:110,fontSize:12}} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
+
+      {/* ── ICS TAB ── */}
+      {tab==='ics' && (
+        <div>
+          <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,marginBottom:14,fontSize:12,color:'#1e40af',lineHeight:1.7}}>
+            <strong>📅 Importar desde Google Calendar / Apple Calendar</strong><br/>
+            Exportá tu calendario de vencimientos como <strong>.ics</strong> y subilos acá. El sistema detecta automáticamente fechas, tipos y prioridades.
+          </div>
+          <div
+            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--gold)';}}
+            onDragLeave={e=>{e.currentTarget.style.borderColor='var(--border)';}}
+            onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--border)';handleICSFile(e.dataTransfer.files[0]);}}
+            style={{border:'2px dashed var(--border)',borderRadius:12,padding:'32px 20px',textAlign:'center',cursor:'pointer',transition:'border-color 0.2s',marginBottom:16}}
+            onClick={()=>document.getElementById('ics-file-input').click()}>
+            <div style={{fontSize:36,marginBottom:8}}>📅</div>
+            <div style={{fontWeight:600,color:'var(--black)',marginBottom:4}}>Arrastrá tu archivo .ics aquí</div>
+            <div style={{fontSize:12,color:'var(--gray)'}}>o hacé clic para seleccionar</div>
+            <input id="ics-file-input" type="file" accept=".ics,.ical" style={{display:'none'}}
+              onChange={e=>handleICSFile(e.target.files[0])} />
+          </div>
+          {icsPreview.length > 0 && (
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <div style={{fontSize:13,fontWeight:600,color:'var(--black)'}}>
+                  Vista previa — {icsPreview.length} evento{icsPreview.length!==1?'s':''}
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={()=>{setIcsPreview([]);setIcsText('');}}>✕ Limpiar</button>
+              </div>
+              <div style={{maxHeight:280,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
+                <table style={{width:'100%',fontSize:11,borderCollapse:'collapse'}}>
+                  <thead style={{background:'var(--cream2)',position:'sticky',top:0}}>
+                    <tr>
+                      {['Evento','Fecha','Tipo','Prioridad'].map(h=>(
+                        <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:600,fontSize:11}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {icsPreview.map((r,i)=>(
+                      <tr key={i} style={{borderTop:'1px solid var(--border)',background:i%2===0?'white':'var(--cream3)'}}>
+                        <td style={{padding:'6px 10px',maxWidth:240,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nombre}</td>
+                        <td style={{padding:'6px 10px',whiteSpace:'nowrap',fontFamily:'JetBrains Mono,monospace',fontSize:11}}>{r.fecha}</td>
+                        <td style={{padding:'6px 8px'}}><span className={`badge ${TIPO_BADGE[r.tipo]||'badge-gray'}`} style={{fontSize:10}}>{r.tipo}</span></td>
+                        <td style={{padding:'6px 8px'}}><span className={`badge ${r.prioridad==='alta'?'badge-red':'badge-gray'}`} style={{fontSize:10}}>{r.prioridad}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── SMART CSV TAB ── */}
+      {tab==='smart' && (
+        <div>
+          <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,marginBottom:14,fontSize:12,color:'#1e40af',lineHeight:1.7}}>
+            <strong>🧠 CSV con asignación automática por CUIT</strong><br/>
+            Pegá el CSV de vencimientos. El sistema detecta a qué clientes corresponde cada fila según terminación de CUIT.
+          </div>
+          <textarea className="form-textarea" style={{minHeight:140,fontFamily:'JetBrains Mono,monospace',fontSize:11}}
+            value={csvText} onChange={e=>setCsvText(e.target.value)}
+            placeholder={"nombre,tipo,fecha,clientes,prioridad\nIVA Febrero 2026 - CUIT 0-1,fiscal,2026-03-18,CUIT term. 0-1,alta\nMonotributo Marzo 2026,fiscal,2026-03-20,Todos los monotributistas,alta"} />
+          {preview.length > 0 && (
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>{preview.length} vencimiento{preview.length!==1?'s':''} a crear:</div>
+              <div style={{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
+                <table style={{width:'100%',fontSize:11,borderCollapse:'collapse'}}>
+                  <thead style={{background:'var(--cream2)',position:'sticky',top:0}}>
+                    <tr>{['Vencimiento','Fecha','Cliente','Tipo'].map(h=><th key={h} style={{padding:'6px 10px',textAlign:'left',fontSize:11,fontWeight:600}}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((r,i)=>(
+                      <tr key={i} style={{borderTop:'1px solid var(--border)',background:i%2===0?'white':'var(--cream3)'}}>
+                        <td style={{padding:'5px 10px',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nombre}</td>
+                        <td style={{padding:'5px 10px',fontFamily:'JetBrains Mono,monospace',fontSize:11}}>{r.fecha}</td>
+                        <td style={{padding:'5px 10px',color:r._matched?.length?'var(--green)':'var(--gray)',fontStyle:r._matched?.length?'normal':'italic'}}>{r._display||'—'}</td>
+                        <td style={{padding:'5px 8px'}}><span className={`badge ${TIPO_BADGE[r.tipo]||'badge-gray'}`} style={{fontSize:10}}>{r.tipo}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── MANUAL TAB ── */}
       {tab==='manual' && (
         <div>
-          <p style={{fontSize:12,color:'var(--gray)',marginBottom:14}}>Completá cada fila con los datos del vencimiento. Podés agregar varios a la vez.</p>
+          <p style={{fontSize:12,color:'var(--gray)',marginBottom:14}}>Completá cada fila manualmente.</p>
           {manualRows.map((row,i)=>(
             <div key={i} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 2fr 1fr auto',gap:8,marginBottom:10,alignItems:'end'}}>
               <div className="form-group" style={{marginBottom:0}}>
@@ -3327,9 +3555,7 @@ function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose 
               <div className="form-group" style={{marginBottom:0}}>
                 {i===0&&<label className="form-label">Tipo</label>}
                 <select className="form-select" value={row.tipo} onChange={e=>upRow(i,'tipo',e.target.value)}>
-                  <option value="fiscal">Fiscal</option>
-                  <option value="laboral">Laboral</option>
-                  <option value="societario">Societario</option>
+                  <option value="fiscal">Fiscal</option><option value="laboral">Laboral</option><option value="societario">Societario</option>
                 </select>
               </div>
               <div className="form-group" style={{marginBottom:0}}>
@@ -3347,9 +3573,7 @@ function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose 
               <div className="form-group" style={{marginBottom:0}}>
                 {i===0&&<label className="form-label">Prioridad</label>}
                 <select className="form-select" value={row.prioridad} onChange={e=>upRow(i,'prioridad',e.target.value)}>
-                  <option value="alta">Alta</option>
-                  <option value="media">Media</option>
-                  <option value="baja">Baja</option>
+                  <option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option>
                 </select>
               </div>
               <div style={{paddingTop:i===0?22:0}}>
@@ -3360,35 +3584,39 @@ function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose 
           <button className="btn btn-ghost btn-sm" style={{marginTop:4}} onClick={addRow}>+ Agregar fila</button>
         </div>
       )}
+
+      {/* ── CSV SIMPLE TAB ── */}
       {tab==='csv' && (
         <div>
           <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,marginBottom:12,fontSize:12,color:'#1e40af'}}>
-            <strong>Formato CSV:</strong> descripción, tipo (fiscal/laboral), fecha (YYYY-MM-DD), cliente, prioridad (alta/media/baja)<br/>
-            Ejemplo: <code>IVA Mensual TechSolutions,fiscal,2026-04-18,TechSolutions S.R.L.,alta</code>
+            <strong>Formato:</strong> descripción, tipo (fiscal/laboral), fecha (YYYY-MM-DD), cliente, prioridad<br/>
+            Ej: <code>IVA Mensual,fiscal,2026-04-18,TechSolutions S.R.L.,alta</code>
           </div>
           <textarea className="form-textarea" style={{minHeight:200,fontFamily:'JetBrains Mono,monospace',fontSize:12}}
             value={csvText} onChange={e=>setCsvText(e.target.value)}
-            placeholder={"IVA Mensual - Abril,fiscal,2026-04-18,TechSolutions S.R.L.,alta\nMonotributo - Abril,fiscal,2026-04-20,Diego Fernández,media"} />
-          {csvText && (
-            <div style={{fontSize:12,color:'var(--gray)',marginTop:6}}>
-              → {parseCSV(csvText).length} fila{parseCSV(csvText).length!==1?'s':''} válida{parseCSV(csvText).length!==1?'s':''}
-            </div>
-          )}
+            placeholder={"IVA - Abril,fiscal,2026-04-18,Mi Cliente,alta\nMonotributo - Abril,fiscal,2026-04-20,Mi Cliente,alta"} />
+          {csvText && <div style={{fontSize:12,color:'var(--gray)',marginTop:6}}>→ {parseCSV(csvText).length} filas válidas</div>}
         </div>
       )}
+
+      {/* ── INFO TAB ── */}
       {tab==='info' && (
-        <div style={{fontSize:13,lineHeight:1.8,color:'var(--black)'}}>
-          <div style={{padding:'14px 16px',background:'var(--amber2)',borderRadius:8,marginBottom:16,borderLeft:'3px solid var(--amber)'}}>
-            <strong>¿Por qué no se conecta directamente con ARCA?</strong><br/>
-            ARCA requiere CUIT + clave fiscal + reCAPTCHA para acceder. No existe una API pública que permita conexión programática sin credenciales.
+        <div style={{fontSize:13,lineHeight:1.9,color:'var(--black)'}}>
+          <div style={{padding:'12px 16px',background:'var(--amber2)',borderRadius:8,marginBottom:14,borderLeft:'3px solid var(--amber)'}}>
+            <strong>¿Por qué no hay conexión directa con ARCA/ARBA?</strong><br/>
+            Ambos organismos requieren CUIT + clave fiscal + reCAPTCHA. No existe API pública.
           </div>
-          <p><strong>Opciones disponibles:</strong></p>
+          <p><strong>Métodos disponibles:</strong></p>
           <ul style={{paddingLeft:20,marginTop:8}}>
-            <li style={{marginBottom:8}}><strong>Carga manual:</strong> Ingresá los vencimientos uno por uno o en lote usando la pestaña "Carga manual".</li>
-            <li style={{marginBottom:8}}><strong>Importar CSV:</strong> Descargá el calendario fiscal de ARCA (publicado en PDF cada año), convertilo a CSV y usá la pestaña "CSV / Texto".</li>
-            <li style={{marginBottom:8}}><strong>Auto-generado:</strong> Al asignar tributos a un cliente, el sistema ya genera automáticamente sus vencimientos recurrentes (mensual, bimestral).</li>
-            <li style={{marginBottom:8}}><strong>Plantilla recurrente:</strong> Podés cargar un mes y el sistema repetirá el patrón. Funcionalidad planificada para próximas versiones.</li>
+            <li style={{marginBottom:10}}><strong>📅 Archivo .ics (recomendado):</strong> Exportá tu Google Calendar o Apple Calendar con los vencimientos como .ics. El sistema detecta fechas, tipos y prioridades automáticamente.</li>
+            <li style={{marginBottom:10}}><strong>🧠 Smart CSV:</strong> Usá el CSV de vencimientos 2026 provisto. El sistema asigna cada fila al cliente correcto por terminación de CUIT.</li>
+            <li style={{marginBottom:10}}><strong>✏️ Manual:</strong> Cargá vencimientos uno a uno o en lote.</li>
+            <li style={{marginBottom:10}}><strong>Auto-generado:</strong> Al asignar tributos a un cliente desde su perfil, el sistema genera vencimientos para los próximos 12 meses con fechas exactas según su CUIT.</li>
           </ul>
+          <div style={{padding:'10px 14px',background:'var(--green2)',borderRadius:8,marginTop:10,fontSize:12,color:'#065f46',borderLeft:'3px solid var(--green)'}}>
+            <strong>Cómo exportar desde Google Calendar:</strong><br/>
+            Ajustes → Importar y exportar → Exportar → se descarga un .zip con archivos .ics
+          </div>
         </div>
       )}
     </Modal>
@@ -3444,7 +3672,8 @@ function CatalogoTributos({ tributosCatalogo, setTributosCatalogo }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este tributo del catálogo?')) return;
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar este tributo del catálogo', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'tributos',id)); } catch(e) {}
     setTributosCatalogo(prev => prev.filter(t => t.id !== id));
   };
@@ -3599,7 +3828,7 @@ function App() {
     fb.getDocs(fb.collection(fb.db,'clients')).then(snap => {
       if (!snap.empty) {
         const data = snap.docs.map(d=>({id:d.id,...d.data()}));
-        setClients(prev => { const mockIds=MOCK_CLIENTS.map(m=>m.id); return [...prev.filter(c=>mockIds.includes(c.id)),...data]; });
+        setClients(data);
       }
     }).catch(()=>{});
 
@@ -3607,7 +3836,7 @@ function App() {
     fb.getDocs(fb.collection(fb.db,'vencimientos')).then(snap => {
       if (!snap.empty) {
         const data = snap.docs.map(d=>({id:d.id,...d.data()}));
-        setVencimientos(prev => { const mockIds=CALENDARIO_2026.map(v=>v.id); return [...prev.filter(v=>mockIds.includes(v.id)),...data]; });
+        setVencimientos(data);
       }
     }).catch(()=>{});
 
@@ -3628,7 +3857,7 @@ function App() {
     fb.getDocs(fb.collection(fb.db,'tareas')).then(snap => {
       if (!snap.empty) {
         const data = snap.docs.map(d=>({id:d.id,...d.data()}));
-        setTareas(prev => { const m=['t1','t2','t3','t4','t5']; return [...prev.filter(t=>m.includes(t.id)),...data]; });
+        setTareas(data);
       }
     }).catch(()=>{});
 
@@ -3636,7 +3865,7 @@ function App() {
     fb.getDocs(fb.collection(fb.db,'notas')).then(snap => {
       if (!snap.empty) {
         const data = snap.docs.map(d=>({id:d.id,...d.data()}));
-        setNotas(prev => { const m=['n1','n2']; return [...prev.filter(n=>m.includes(n.id)),...data]; });
+        setNotas(data);
       }
     }).catch(()=>{});
     // cobros
