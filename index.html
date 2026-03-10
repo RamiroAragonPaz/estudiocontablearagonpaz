@@ -181,9 +181,11 @@
     }
 
     /* ── LAYOUT ────────────────────────────────────── */
+    html, body { height: 100%; }
     .app-layout {
       display: flex;
       min-height: 100vh;
+      background: var(--cream);
     }
 
     /* ── SIDEBAR ───────────────────────────────────── */
@@ -192,12 +194,14 @@
       background: var(--black);
       position: fixed;
       top: 0; left: 0;
-      height: 100vh;
+      height: 100%;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       border-right: 1px solid rgba(201,169,110,0.12);
-      z-index: 100;
+      z-index: 200;
       overflow-y: auto;
+      overflow-x: hidden;
     }
     .sidebar-header {
       padding: 28px 20px 24px;
@@ -297,10 +301,11 @@
 
     /* ── MAIN CONTENT ──────────────────────────────── */
     .main {
-      margin-left: 10px;
+      margin-left: var(--sidebar);
       flex: 1;
       padding: 32px 36px;
       min-height: 100vh;
+      overflow-y: auto;
     }
     .page-header {
       display: flex;
@@ -724,6 +729,22 @@
     }
 
 
+
+    /* ── ICON ACTION BUTTONS ───────────────────────── */
+    .btn-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px; border-radius: 7px;
+      border: none; cursor: pointer; font-size: 14px;
+      transition: all 0.15s; background: transparent;
+    }
+    .btn-icon:hover { transform: scale(1.12); }
+    .btn-icon.edit  { color: var(--gold); background: var(--amber2); }
+    .btn-icon.edit:hover  { background: #fde68a; }
+    .btn-icon.trash { color: var(--red);  background: var(--red2);   }
+    .btn-icon.trash:hover { background: #fca5a5; }
+    .btn-icon.check { color: var(--green); background: var(--green2); }
+    .btn-icon.check:hover { background: #a7f3d0; }
+    .action-btns { display: flex; gap: 4px; align-items: center; }
     /* ── STAT CARD CLICKABLE ──────────────────────── */
     .stat-card-link { cursor: pointer; position: relative; transition: all 0.2s; }
     .stat-card-link:hover { transform: translateY(-4px); box-shadow: var(--shadow2); border-color: rgba(201,169,110,0.3); }
@@ -757,7 +778,7 @@
     }
     .sidebar-toggle:hover { background: var(--gold2); transform: scale(1.1); }
     .main { transition: margin-left 0.25s cubic-bezier(.4,0,.2,1); }
-    .main.collapsed { margin-left: 10px !important; }
+    .main.collapsed { margin-left: var(--sidebar-collapsed) !important; }
     .client-row { cursor: pointer; transition: background 0.15s; }
     .client-row:hover td { background: rgba(201,169,110,0.05); }
     .sidebar.collapsed .nav-item { position: relative; }
@@ -1821,7 +1842,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
               <table>
                 <thead><tr>
                   <th style={{paddingLeft:16}}>Cliente</th><th>CUIT</th><th>Tipo</th>
-                  <th>Servicio</th><th>Tributos</th><th>Honorario</th><th>Saldo</th><th>Estado</th>
+                  <th>Servicio</th><th>Tributos</th><th>Honorario</th><th>Saldo</th><th>Estado</th><th></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map(c=>(
@@ -1842,6 +1863,17 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
                       <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
                       <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
                       <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
+                    <td onClick={e=>e.stopPropagation()}>
+                      <div className="action-btns">
+                        <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
+                        <button className="btn-icon trash" title="Eliminar" onClick={async e=>{
+                          e.stopPropagation();
+                          if(!confirm(`¿Eliminar a ${c.nombre}? Esta acción no se puede deshacer.`)) return;
+                          try{await FB().deleteDoc(FB().doc(FB().db,'clients',c.id));}catch(er){}
+                          setClients(prev=>prev.filter(x=>x.id!==c.id));
+                        }}>🗑️</button>
+                      </div>
+                    </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1876,6 +1908,7 @@ const NATURALEZAS_COBRO = [
 
 function Cobros({ clients, setClients, cobros, setCobros }) {
   const [modal, setModal]     = useState(false);
+  const [editItem, setEditItem] = useState(null); // cobro being edited
   const [form, setForm]       = useState({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
   const [saving, setSaving]   = useState(false);
   const [filter, setFilter]   = useState('todos');
@@ -1916,15 +1949,43 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
     } catch(e) {
       saved = {...cobro, id:'local-'+Date.now()};
     }
-    setCobros(prev=>[saved,...prev]);
-    // Update client saldo
-    if (cliente) {
-      const newSaldo = Math.max(0, (cliente.saldoPendiente||0) - Number(form.monto));
-      try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
-      setClients(prev=>prev.map(c=>c.id===form.clienteId?{...c,saldoPendiente:newSaldo}:c));
+    if (editItem) {
+      // UPDATE existing
+      try { await FB().updateDoc(FB().doc(FB().db,'cobros',editItem.id), cobro); } catch(e){}
+      setCobros(prev=>prev.map(x=>x.id===editItem.id?{...cobro,id:editItem.id}:x));
+    } else {
+      // CREATE new
+      let saved;
+      try {
+        const fb = FB();
+        const ref = await fb.addDoc(fb.collection(fb.db,'cobros'), {...cobro, createdAt:fb.serverTimestamp()});
+        saved = {...cobro, id:ref.id};
+      } catch(e) {
+        saved = {...cobro, id:'local-'+Date.now()};
+      }
+      setCobros(prev=>[saved,...prev]);
+      // Update client saldo only on new cobro
+      if (cliente) {
+        const newSaldo = Math.max(0, (cliente.saldoPendiente||0) - Number(form.monto));
+        try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
+        setClients(prev=>prev.map(c=>c.id===form.clienteId?{...c,saldoPendiente:newSaldo}:c));
+      }
     }
-    setSaving(false); setModal(false);
+    setSaving(false); setModal(false); setEditItem(null);
     setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''});
+  };
+
+  const openEdit = (cobro) => {
+    setEditItem(cobro);
+    setForm({ clienteId:cobro.clienteId||'', monto:cobro.monto||'', naturaleza:cobro.naturaleza||'Honorarios mensuales',
+      medio:cobro.medio||'efectivo', submedio:cobro.submedio||'', fecha:cobro.fecha||todayStr, notas:cobro.notas||'' });
+    setModal(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este cobro? Esta acción no se puede deshacer.')) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'cobros',id)); } catch(e){}
+    setCobros(prev=>prev.filter(x=>x.id!==id));
   };
 
   const medioActual = MEDIOS_PAGO.find(m=>m.id===form.medio);
@@ -1937,7 +1998,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
           <div className="page-title">Cobros</div>
           <div className="page-subtitle">Registrá cobros y generá recibos · {cobros.length} registros</div>
         </div>
-        <button className="btn btn-gold" onClick={()=>{ setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''}); setModal(true); }}>
+        <button className="btn btn-gold" onClick={()=>{ setEditItem(null); setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''}); setModal(true); }}>
           + Registrar Cobro
         </button>
       </div>
@@ -1980,7 +2041,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
           <table>
             <thead><tr>
               <th>Fecha</th><th>Cliente</th><th>Naturaleza</th>
-              <th>Medio de Pago</th><th style={{textAlign:'right'}}>Monto</th><th>Notas</th>
+              <th>Medio de Pago</th><th style={{textAlign:'right'}}>Monto</th><th>Notas</th><th>Acciones</th>
             </tr></thead>
             <tbody>
               {filtered.length===0
@@ -1996,7 +2057,11 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
                       </span>
                     </td>
                     <td style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:'var(--green)'}}>{fmt(c.monto)}</td>
-                    <td style={{fontSize:12,color:'var(--gray)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.notas||'—'}</td>
+                    <td style={{fontSize:12,color:'var(--gray)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.notas||'—'}</td>
+                    <td><div className="action-btns">
+                      <button className="btn-icon edit" title="Editar" onClick={()=>openEdit(c)}>✏️</button>
+                      <button className="btn-icon trash" title="Eliminar" onClick={()=>handleDelete(c.id)}>🗑️</button>
+                    </div></td>
                   </tr>
                 ))
               }
@@ -2006,11 +2071,11 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
       </div>
 
       {modal && (
-        <Modal title="💰 Registrar Cobro" onClose={()=>setModal(false)} wide
+        <Modal title={editItem ? "✏️ Editar Cobro" : "💰 Registrar Cobro"} onClose={()=>{setModal(false);setEditItem(null);}} wide
           footer={<>
-            <button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Cancelar</button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>{setModal(false);setEditItem(null);}}>Cancelar</button>
             <button className="btn btn-gold" onClick={handleSave} disabled={saving || !form.clienteId || !form.monto}>
-              {saving?'⏳ Guardando...':'✓ Registrar Cobro'}
+              {saving?'⏳ Guardando...':editItem?'✓ Guardar Cambios':'✓ Registrar Cobro'}
             </button>
           </>}>
 
@@ -2126,19 +2191,118 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
     setVencimientos(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
   };
 
-  const handleSave = async () => {
-    if (!form.nombre||!form.fecha) return;
-    try {
-      if (!selVenc) {
-        const ref = await FB().addDoc(FB().collection(FB().db,'vencimientos'),{...form,completado:false,createdAt:FB().serverTimestamp()});
-        setVencimientos(prev=>[...prev,{...form,id:ref.id,completado:false}]);
-      } else {
-        await FB().updateDoc(FB().doc(FB().db,'vencimientos',selVenc.id),form);
-        setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...form,id:selVenc.id,completado:selVenc.completado}:x));
+  // Compute date for Nth weekday in a month
+  // weekN: 1..4 or -1 (last), dowTarget: 0=Sun..6=Sat
+  const nthWeekday = (year, month, weekN, dowTarget) => {
+    if (weekN === -1) {
+      // Last occurrence
+      let d = new Date(year, month+1, 0); // last day of month
+      while (d.getDay() !== dowTarget) d.setDate(d.getDate()-1);
+      return d;
+    }
+    let d = new Date(year, month, 1);
+    let count = 0;
+    while (true) {
+      if (d.getDay() === dowTarget) { count++; if (count === weekN) return d; }
+      d.setDate(d.getDate()+1);
+      if (d.getMonth() !== month) return null;
+    }
+  };
+
+  // Generate recurring dates based on form periodicidad
+  const buildFechas = (f) => {
+    const per = f.periodicidad || 'puntual';
+    const now = new Date();
+    const dates = [];
+    if (per === 'puntual' || per === 'anual') {
+      if (!f.fecha) return [];
+      if (per === 'puntual') return [f.fecha];
+      // anual: generate next 5 years
+      const base = new Date(f.fecha + 'T12:00:00');
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(base);
+        d.setFullYear(base.getFullYear() + i);
+        dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
       }
-    } catch(e) {
-      if (!selVenc) setVencimientos(prev=>[...prev,{...form,id:'local-'+Date.now(),completado:false}]);
-      else setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...form,id:selVenc.id,completado:selVenc.completado}:x));
+      return dates;
+    }
+    const dia = parseInt(f.diaMes) || 20;
+    const step = per==='bimestral'?2 : per==='trimestral'?3 : 1;
+    const months = per==='anual'?1 : per==='trimestral'?4 : per==='bimestral'?6 : 12;
+    for (let i = 0; i < months; i += step) {
+      const yr  = now.getMonth()+i > 11 ? now.getFullYear()+Math.floor((now.getMonth()+i)/12) : now.getFullYear();
+      const mon = (now.getMonth()+i)%12;
+      const maxD = new Date(yr, mon+1, 0).getDate();
+      const d = Math.min(dia, maxD);
+      dates.push(`${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+    }
+    return dates;
+    if (per === 'mensual-n') {
+      const semana = parseInt(f.semana)||4;
+      const dow = parseInt(f.diaSemana)||4;
+      for (let i = 0; i < 12; i++) {
+        const yr  = now.getMonth()+i > 11 ? now.getFullYear()+Math.floor((now.getMonth()+i)/12) : now.getFullYear();
+        const mon = (now.getMonth()+i)%12;
+        const target = nthWeekday(yr, mon, semana, dow);
+        if (target) {
+          dates.push(`${target.getFullYear()}-${String(target.getMonth()+1).padStart(2,'0')}-${String(target.getDate()).padStart(2,'0')}`);
+        }
+      }
+      return dates;
+    }
+    return dates;
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre) return;
+    const per = form.periodicidad || 'puntual';
+    // Validation
+    if ((per==='puntual'||per==='anual') && !form.fecha) return;
+    if ((per==='mensual'||per==='bimestral'||per==='trimestral') && !form.diaMes) return;
+
+    if (selVenc) {
+      // Simple update of single record
+      const payload = {...form, completado: selVenc.completado};
+      try {
+        await FB().updateDoc(FB().doc(FB().db,'vencimientos',selVenc.id), payload);
+        setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...payload,id:selVenc.id}:x));
+      } catch(e) {
+        setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...payload,id:selVenc.id}:x));
+      }
+    } else {
+      // Build all dates based on periodicidad
+      let fechas;
+      if (per === 'mensual-n') {
+        const semana = parseInt(form.semana)||4;
+        const dow = parseInt(form.diaSemana)||4;
+        fechas = [];
+        const now2 = new Date();
+        for (let i = 0; i < 12; i++) {
+          const yr  = now2.getMonth()+i > 11 ? now2.getFullYear()+Math.floor((now2.getMonth()+i)/12) : now2.getFullYear();
+          const mon = (now2.getMonth()+i)%12;
+          const target = nthWeekday(yr, mon, semana, dow);
+          if (target) {
+            fechas.push(`${target.getFullYear()}-${String(target.getMonth()+1).padStart(2,'0')}-${String(target.getDate()).padStart(2,'0')}`);
+          }
+        }
+      } else {
+        fechas = buildFechas(form);
+      }
+      if (!fechas.length) return;
+      const base = { nombre:form.nombre, tipo:form.tipo||'fiscal', clientes:form.clientes||'',
+        prioridad:form.prioridad||'media', completado:false, periodicidad:per,
+        notas:form.notas||'' };
+      const newVenc = [];
+      for (const fecha of fechas) {
+        const v = {...base, fecha};
+        try {
+          const ref = await FB().addDoc(FB().collection(FB().db,'vencimientos'),{...v,createdAt:FB().serverTimestamp()});
+          newVenc.push({...v,id:ref.id});
+        } catch(e) {
+          newVenc.push({...v,id:'local-'+Date.now()+Math.random()});
+        }
+      }
+      setVencimientos(prev=>[...prev,...newVenc]);
     }
     setModal(null); setSelVenc(null);
   };
@@ -2363,24 +2527,21 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
 
       {/* FORM MODAL */}
       {modal === 'form' && (
-        <Modal title={selVenc?'Editar Vencimiento':'Nuevo Vencimiento'}
+        <Modal title={selVenc?'✏️ Editar Vencimiento':'📅 Nuevo Vencimiento'}
           onClose={()=>{setModal(null);setSelVenc(null);}}
           footer={<>
             <button className="btn btn-ghost btn-sm" onClick={()=>{setModal(null);setSelVenc(null);}}>Cancelar</button>
             <button className="btn btn-gold btn-sm" onClick={handleSave}>Guardar</button>
           </>}>
+
           <div className="form-group">
             <label className="form-label">Descripción *</label>
             <input className="form-input" value={form.nombre||''}
               onChange={e=>setForm(f=>({...f,nombre:e.target.value}))}
               placeholder="Ej: IVA Mensual - Abril" autoFocus />
           </div>
+
           <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Fecha *</label>
-              <input className="form-input" type="date" value={form.fecha||''}
-                onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} />
-            </div>
             <div className="form-group">
               <label className="form-label">Tipo</label>
               <select className="form-select" value={form.tipo||'fiscal'}
@@ -2391,32 +2552,109 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
                 <option value="otro">Otro</option>
               </select>
             </div>
-          </div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Cliente(s)</label>
-              <select className="form-select" value={form.clientes||''}
-                onChange={e=>setForm(f=>({...f,clientes:e.target.value}))}>
-                <option value="">Todos / General</option>
-                <option value="Todos los monotributistas">Todos los monotributistas</option>
-                {clients.map(c=><option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-              </select>
-            </div>
             <div className="form-group">
               <label className="form-label">Prioridad</label>
               <select className="form-select" value={form.prioridad||'media'}
                 onChange={e=>setForm(f=>({...f,prioridad:e.target.value}))}>
-                <option value="alta">Alta</option>
-                <option value="media">Media</option>
-                <option value="baja">Baja</option>
+                <option value="alta">🔴 Alta</option>
+                <option value="media">🟡 Media</option>
+                <option value="baja">🟢 Baja</option>
               </select>
             </div>
           </div>
+
+          <div className="form-group">
+            <label className="form-label">Cliente(s)</label>
+            <select className="form-select" value={form.clientes||''}
+              onChange={e=>setForm(f=>({...f,clientes:e.target.value}))}>
+              <option value="">Todos / General</option>
+              <option value="Todos los monotributistas">Todos los monotributistas</option>
+              {clients.map(c=><option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+            </select>
+          </div>
+
+          {/* PERIODICIDAD */}
+          <div className="form-group">
+            <label className="form-label">Recurrencia / Periodicidad</label>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:12}}>
+              {[
+                {v:'puntual',    l:'📌 Fecha puntual',   d:'Un día específico'},
+                {v:'mensual',    l:'📆 Mensual',          d:'Mismo día c/mes'},
+                {v:'mensual-n',  l:'📆 Mensual (día rel)',d:'Ej: 4° jueves'},
+                {v:'bimestral',  l:'📅 Bimestral',        d:'Cada 2 meses'},
+                {v:'trimestral', l:'📅 Trimestral',       d:'Cada 3 meses'},
+                {v:'anual',      l:'🗓️ Anual',            d:'Mismo día c/año'},
+              ].map(opt=>(
+                <div key={opt.v} onClick={()=>setForm(f=>({...f,periodicidad:opt.v,fecha:'',semana:'',diaSemana:''}))}
+                  style={{padding:'8px 10px',borderRadius:'var(--r2)',cursor:'pointer',transition:'all 0.15s',textAlign:'center',
+                    background:(form.periodicidad||'puntual')===opt.v?'rgba(201,169,110,0.18)':'var(--cream)',
+                    border:(form.periodicidad||'puntual')===opt.v?'2px solid var(--gold)':'2px solid transparent'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--black)'}}>{opt.l}</div>
+                  <div style={{fontSize:10,color:'var(--gray)',marginTop:2}}>{opt.d}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* PUNTUAL or ANUAL → date picker */}
+          {(!form.periodicidad||form.periodicidad==='puntual'||form.periodicidad==='anual') && (
+            <div className="form-group">
+              <label className="form-label">{form.periodicidad==='anual'?'Fecha anual (día y mes)':'Fecha exacta *'}</label>
+              <input className="form-input" type="date" value={form.fecha||''}
+                onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} />
+              {form.periodicidad==='anual' && <div style={{fontSize:11,color:'var(--gray)',marginTop:3}}>Se repetirá cada año en esta fecha. Se generarán los próximos 5 años.</div>}
+            </div>
+          )}
+
+          {/* MENSUAL por día del mes */}
+          {(form.periodicidad==='mensual'||form.periodicidad==='bimestral'||form.periodicidad==='trimestral') && (
+            <div className="form-group">
+              <label className="form-label">Día del mes (1–31)</label>
+              <input className="form-input" type="number" min="1" max="31" value={form.diaMes||''}
+                onChange={e=>setForm(f=>({...f,diaMes:e.target.value}))}
+                placeholder="Ej: 20 (para el día 20 de cada mes)" />
+              <div style={{fontSize:11,color:'var(--gray)',marginTop:3}}>
+                {form.periodicidad==='bimestral'?'Se generarán meses alternos.':form.periodicidad==='trimestral'?'Se generarán cada 3 meses.':'Se generará para el mes actual y los próximos 11 meses.'}
+              </div>
+            </div>
+          )}
+
+          {/* MENSUAL por día relativo: ej. 4° jueves */}
+          {form.periodicidad==='mensual-n' && (
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Semana del mes</label>
+                <select className="form-select" value={form.semana||'1'} onChange={e=>setForm(f=>({...f,semana:e.target.value}))}>
+                  <option value="1">1° semana</option>
+                  <option value="2">2° semana</option>
+                  <option value="3">3° semana</option>
+                  <option value="4">4° semana</option>
+                  <option value="-1">Última semana</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Día de la semana</label>
+                <select className="form-select" value={form.diaSemana||'4'} onChange={e=>setForm(f=>({...f,diaSemana:e.target.value}))}>
+                  <option value="1">Lunes</option>
+                  <option value="2">Martes</option>
+                  <option value="3">Miércoles</option>
+                  <option value="4">Jueves</option>
+                  <option value="5">Viernes</option>
+                  <option value="6">Sábado</option>
+                  <option value="0">Domingo</option>
+                </select>
+              </div>
+              <div style={{gridColumn:'1/-1',fontSize:11,color:'var(--gray)',marginTop:-6}}>
+                Ej: 4° Jueves de cada mes = vencimiento el cuarto jueves. Se generarán los próximos 12 meses.
+              </div>
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">Notas</label>
             <textarea className="form-textarea" value={form.notas||''}
               onChange={e=>setForm(f=>({...f,notas:e.target.value}))}
-              placeholder="Detalles adicionales..." style={{minHeight:70}} />
+              placeholder="Detalles adicionales..." style={{minHeight:60}} />
           </div>
         </Modal>
       )}
@@ -2513,32 +2751,54 @@ function Finanzas({ cobros, facturas }) {
 // ── FACTURACIÓN ──────────────────────────────────────
 function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
   const [modal, setModal]   = useState(null);
+  const [editItem, setEditItem] = useState(null);
   const [form, setForm]     = useState({});
   const [filterMes, setFilterMes] = useState('');
   const now = new Date();
   const mesActual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const listaFiltrada = filterMes ? facturas.filter(f=>(f.fecha||'').startsWith(filterMes)) : facturas;
 
-  const totalCobrado  = listaFiltrada.filter(f => f.estado === 'cobrado').reduce((s,f) => s + Number(f.monto||0), 0);
-  const totalPendiente = listaFiltrada.filter(f => f.estado === 'pendiente').reduce((s,f) => s + Number(f.monto||0), 0);
+  // Totals computed inline in JSX
 
   const handleSave = async () => {
     if (!form.cliente || !form.monto) return;
     const payload = {...form, monto: Number(form.monto), clienteId: clients.find(c=>c.nombre===form.cliente)?.id||''};
-    try {
-      const ref = await FB().addDoc(FB().collection(FB().db, 'facturas'), {...payload, createdAt: FB().serverTimestamp()});
-      setFacturas(prev => [...prev, {...payload, id: ref.id}]);
-    } catch(e) {
-      setFacturas(prev => [...prev, {...payload, id: 'local-'+Date.now()}]);
+    if (editItem) {
+      try { await FB().updateDoc(FB().doc(FB().db,'facturas',editItem.id), payload); } catch(e){}
+      setFacturas(prev=>prev.map(x=>x.id===editItem.id?{...payload,id:editItem.id}:x));
+    } else {
+      try {
+        const ref = await FB().addDoc(FB().collection(FB().db,'facturas'), {...payload, createdAt:FB().serverTimestamp()});
+        setFacturas(prev => [...prev, {...payload, id: ref.id}]);
+      } catch(e) {
+        setFacturas(prev => [...prev, {...payload, id: 'local-'+Date.now()}]);
+      }
     }
-    setModal(null);
+    setModal(null); setEditItem(null);
   };
+
+  const ESTADO_CYCLE = { 'na':'pendiente', 'pendiente':'facturado', 'facturado':'na' };
+  const ESTADO_LABEL = { 'na':'— N/A', 'pendiente':'⏳ Pendiente', 'facturado':'🧾 Facturado' };
+  const ESTADO_BADGE = { 'na':'badge-gray', 'pendiente':'badge-amber', 'facturado':'badge-green' };
 
   const toggleEstado = async (id) => {
     const f = facturas.find(x=>x.id===id);
-    const newEstado = f?.estado === 'cobrado' ? 'pendiente' : 'cobrado';
+    const cur = f?.estado||'na';
+    const newEstado = ESTADO_CYCLE[cur]||'pendiente';
     try { await FB().updateDoc(FB().doc(FB().db,'facturas',id),{estado:newEstado}); } catch(e){}
     setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: newEstado} : f));
+  };
+
+  const openEditFac = (f) => {
+    setEditItem(f);
+    setForm({ cliente:f.cliente||'', concepto:f.concepto||'', monto:f.monto||'', fecha:f.fecha||todayStr, estado:f.estado||'pendiente' });
+    setModal('new');
+  };
+
+  const handleDeleteFac = async (id) => {
+    if (!confirm('¿Eliminar esta factura/cargo?')) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'facturas',id)); } catch(e){}
+    setFacturas(prev=>prev.filter(x=>x.id!==id));
   };
 
   const meses = [...new Set(facturas.map(f=>(f.fecha||'').slice(0,7)))].filter(Boolean).sort().reverse();
@@ -2550,23 +2810,23 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
           <div className="page-title">Facturación</div>
           <div className="page-subtitle">Honorarios generados · {filterMes||'Todos los meses'}</div>
         </div>
-        <button className="btn btn-gold" onClick={() => { setForm({ estado: 'pendiente', fecha: todayStr }); setModal('new'); }}>+ Nueva Factura</button>
+        <button className="btn btn-gold" onClick={() => { setEditItem(null); setForm({ estado: 'na', fecha: todayStr }); setModal('new'); }}>+ Nuevo Cargo</button>
       </div>
 
       <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:24}}>
         <div className="stat-card">
-          <div className="stat-icon">💰</div>
-          <div className="stat-label">Cobrado</div>
-          <div className="stat-value gold">{fmtShort(totalCobrado)}</div>
+          <div className="stat-icon">🧾</div>
+          <div className="stat-label">Facturados</div>
+          <div className="stat-value gold">{fmtShort(listaFiltrada.filter(f=>f.estado==='facturado').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">⏳</div>
-          <div className="stat-label">Pendiente</div>
-          <div className="stat-value" style={{color: totalPendiente > 0 ? 'var(--amber)' : 'var(--green)'}}>{fmtShort(totalPendiente)}</div>
+          <div className="stat-label">Pendiente de factura</div>
+          <div className="stat-value" style={{color:'var(--amber)'}}>{fmtShort(listaFiltrada.filter(f=>f.estado==='pendiente').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">📋</div>
-          <div className="stat-label">Comprobantes</div>
+          <div className="stat-label">Total cargos</div>
           <div className="stat-value">{listaFiltrada.length}</div>
         </div>
       </div>
@@ -2583,7 +2843,7 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
         <div className="table-wrap">
           <table>
             <thead><tr>
-              <th style={{paddingLeft:16}}>Concepto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Estado</th><th>Acción</th>
+              <th style={{paddingLeft:16}}>Concepto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Estado <span style={{fontSize:10,opacity:0.6}}>(clic para cambiar)</span></th><th>Acciones</th>
             </tr></thead>
             <tbody>
               {[...listaFiltrada].sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
@@ -2592,12 +2852,15 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
                   <td style={{fontSize:13}}>{f.cliente}</td>
                   <td style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700}}>{fmt(f.monto)}</td>
                   <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13}}>{fmtDate(f.fecha)}</td>
-                  <td><span className={`badge ${f.estado==='cobrado'?'badge-green':'badge-amber'}`}>{f.estado==='cobrado'?'✓ Cobrado':'⏳ Pendiente'}</span></td>
                   <td>
-                    <button className="btn btn-sm btn-ghost" style={{fontSize:12}} onClick={()=>toggleEstado(f.id)}>
-                      {f.estado==='cobrado'?'Marcar Pendiente':'✓ Cobrado'}
-                    </button>
+                    <span className={`badge ${ESTADO_BADGE[f.estado||'na']}`} style={{cursor:'pointer'}} title="Clic para cambiar estado" onClick={()=>toggleEstado(f.id)}>
+                      {ESTADO_LABEL[f.estado||'na']}
+                    </span>
                   </td>
+                  <td><div className="action-btns">
+                    <button className="btn-icon edit" title="Editar" onClick={()=>openEditFac(f)}>✏️</button>
+                    <button className="btn-icon trash" title="Eliminar" onClick={()=>handleDeleteFac(f.id)}>🗑️</button>
+                  </div></td>
                 </tr>
               ))}
               {listaFiltrada.length===0 && <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--gray2)'}}>Sin comprobantes</td></tr>}
@@ -2607,10 +2870,10 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
       </div>
 
       {modal === 'new' && (
-        <Modal title="Nueva Factura / Honorario" onClose={() => setModal(null)}
+        <Modal title={editItem ? "✏️ Editar Cargo" : "Nueva Factura / Cargo"} onClose={() => setModal(null)}
           footer={<>
-            <button className="btn btn-ghost btn-sm" onClick={() => setModal(null)}>Cancelar</button>
-            <button className="btn btn-gold btn-sm" onClick={handleSave}>Guardar</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => {setModal(null);setEditItem(null);}}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={handleSave}>{editItem?'Guardar Cambios':'Guardar'}</button>
           </>}>
           <div className="form-group">
             <label className="form-label">Cliente</label>
@@ -2635,9 +2898,10 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
           </div>
           <div className="form-group">
             <label className="form-label">Estado</label>
-            <select className="form-select" value={form.estado||'pendiente'} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
-              <option value="pendiente">Pendiente</option>
-              <option value="cobrado">Cobrado</option>
+            <select className="form-select" value={form.estado||'na'} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
+              <option value="na">— N/A</option>
+              <option value="pendiente">⏳ Pendiente de factura</option>
+              <option value="facturado">🧾 Facturado</option>
             </select>
           </div>
         </Modal>
@@ -2651,6 +2915,9 @@ function Tareas({ tareas, setTareas, clients }) {
   const [newText, setNewText] = useState('');
   const [newCliente, setNewCliente] = useState('');
   const [filter, setFilter] = useState('pendientes');
+  const [editTask, setEditTask] = useState(null);
+  const [editTarea, setEditTarea] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   const shown = tareas.filter(t =>
     filter === 'pendientes' ? !t.completado :
@@ -2659,6 +2926,13 @@ function Tareas({ tareas, setTareas, clients }) {
 
   const addTask = async () => {
     if (!newText.trim()) return;
+    if (editTask) {
+      // Update mode
+      const updated = {...editTask, texto:newText, cliente:newCliente};
+      try { await FB().updateDoc(FB().doc(FB().db,'tareas',editTask.id),{texto:newText,cliente:newCliente}); } catch(e){}
+      setTareas(prev=>prev.map(t=>t.id===editTask.id?updated:t));
+      setEditTask(null); setNewText(''); setNewCliente(''); return;
+    }
     const task = { texto: newText, cliente: newCliente, completado: false, fecha: todayStr };
     try {
       const ref = await FB().addDoc(FB().collection(FB().db, 'tareas'), {...task, createdAt: FB().serverTimestamp()});
@@ -2676,8 +2950,16 @@ function Tareas({ tareas, setTareas, clients }) {
   };
 
   const del = async (id) => {
+    if (!confirm('¿Eliminar esta tarea?')) return;
     try { await FB().deleteDoc(FB().doc(FB().db, 'tareas', id)); } catch(e) {}
     setTareas(prev => prev.filter(x => x.id !== id));
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.texto?.trim()) return;
+    try { await FB().updateDoc(FB().doc(FB().db,'tareas',editTarea.id),{texto:editForm.texto,cliente:editForm.cliente||''}); } catch(e){}
+    setTareas(prev=>prev.map(x=>x.id===editTarea.id?{...x,texto:editForm.texto,cliente:editForm.cliente||''}:x));
+    setEditTarea(null);
   };
 
   return (
@@ -2693,12 +2975,14 @@ function Tareas({ tareas, setTareas, clients }) {
         <div className="quick-add-bar">
           <input value={newText} onChange={e => setNewText(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && addTask()}
-            placeholder="Nueva tarea... (Enter para agregar)" />
+            placeholder={editTask ? "Editando tarea... (Enter para guardar)" : "Nueva tarea... (Enter para agregar)"}
+            style={{background: editTask ? 'rgba(201,169,110,0.08)' : undefined}} />
           <select className="form-select" style={{width:'auto', minWidth:180}} value={newCliente} onChange={e => setNewCliente(e.target.value)}>
             <option value="">Sin cliente</option>
             {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
           </select>
-          <button className="btn btn-gold btn-sm" onClick={addTask}>+ Agregar</button>
+          {editTask && <button className="btn btn-ghost btn-sm" onClick={()=>{setEditTask(null);setNewText('');setNewCliente('');}}>✕</button>}
+          <button className="btn btn-gold btn-sm" onClick={addTask}>{editTask?'✓ Guardar':'+ Agregar'}</button>
         </div>
       </div>
 
@@ -2724,19 +3008,44 @@ function Tareas({ tareas, setTareas, clients }) {
                   <span className="nota-date">{fmtDate(t.fecha)}</span>
                 </div>
               </div>
-              <button className="btn btn-sm btn-danger" onClick={() => del(t.id)}>🗑️</button>
+              <div className="action-btns">
+                <button className="btn-icon edit" title="Editar" onClick={()=>{setEditTarea(t);setEditForm({texto:t.texto,cliente:t.cliente||''});}}>✏️</button>
+                <button className="btn-icon trash" title="Eliminar" onClick={() => del(t.id)}>🗑️</button>
+              </div>
             </div>
           ))
         }
       </div>
+
+      {editTarea && (
+        <Modal title="✏️ Editar Tarea" onClose={()=>setEditTarea(null)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setEditTarea(null)}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={saveEdit}>Guardar</button>
+          </>}>
+          <div className="form-group">
+            <label className="form-label">Tarea</label>
+            <input className="form-input" value={editForm.texto||''} onChange={e=>setEditForm(f=>({...f,texto:e.target.value}))} autoFocus />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente</label>
+            <select className="form-select" value={editForm.cliente||''} onChange={e=>setEditForm(f=>({...f,cliente:e.target.value}))}>
+              <option value="">Sin cliente</option>
+              {clients.map(c=><option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+            </select>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 // ── NOTAS ────────────────────────────────────────────
 function Notas({ notas, setNotas, clients }) {
-  const [text, setText] = useState('');
+  const [text, setText]       = useState('');
   const [cliente, setCliente] = useState('');
+  const [editNota, setEditNota] = useState(null);
+  const [editText, setEditText] = useState('');
 
   const addNota = async () => {
     if (!text.trim()) return;
@@ -2751,8 +3060,16 @@ function Notas({ notas, setNotas, clients }) {
   };
 
   const del = async (id) => {
+    if(!confirm('¿Eliminar esta nota?')) return;
     try { await FB().deleteDoc(FB().doc(FB().db, 'notas', id)); } catch(e) {}
     setNotas(prev => prev.filter(n => n.id !== id));
+  };
+
+  const saveEdit = async () => {
+    if (!editText.trim()) return;
+    try { await FB().updateDoc(FB().doc(FB().db,'notas',editNota.id),{texto:editText}); } catch(e){}
+    setNotas(prev=>prev.map(n=>n.id===editNota.id?{...n,texto:editText}:n));
+    setEditNota(null); setEditText('');
   };
 
   return (
@@ -2781,18 +3098,34 @@ function Notas({ notas, setNotas, clients }) {
       {notas.length === 0
         ? <div className="empty-state"><div className="empty-icon">📝</div><p>Sin notas todavía. ¡Empezá a escribir!</p></div>
         : notas.map(n => (
-          <div className="nota-card" key={n.id}>
+          <div className="nota-card" key={n.id} style={{position:'relative'}}>
             <div className="nota-text">{n.texto}</div>
             <div className="nota-meta">
               <div style={{display:'flex', gap:8, alignItems:'center'}}>
                 <div className="nota-date">{fmtDate(n.fecha)}</div>
                 {n.cliente && <span className="badge badge-gold">{n.cliente}</span>}
               </div>
-              <button className="btn btn-sm btn-danger" onClick={() => del(n.id)}>🗑️ Eliminar</button>
+              <div className="action-btns">
+                <button className="btn-icon edit" title="Editar" onClick={()=>{setEditNota(n);setEditText(n.texto);}}>✏️</button>
+                <button className="btn-icon trash" title="Eliminar" onClick={() => del(n.id)}>🗑️</button>
+              </div>
             </div>
           </div>
         ))
       }
+
+      {editNota && (
+        <Modal title="✏️ Editar Nota" onClose={()=>setEditNota(null)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setEditNota(null)}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={saveEdit}>Guardar</button>
+          </>}>
+          <div className="form-group">
+            <textarea className="form-textarea" style={{minHeight:120}} value={editText}
+              onChange={e=>setEditText(e.target.value)} autoFocus />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -3084,7 +3417,7 @@ function App() {
   const [tributosCatalogo, setTributosCatalogo] = useState(TRIBUTOS_SEED);
   const [cobros, setCobros]               = useState([]);
   const [facturas, setFacturas]           = useState([
-    { id:'f1', clienteId:'mock-1', cliente:'TechSolutions S.R.L.', concepto:'Pack Integral - Marzo 2026',   monto:450000, fecha:'2026-03-01', estado:'cobrado' },
+    { id:'f1', clienteId:'mock-1', cliente:'TechSolutions S.R.L.', concepto:'Pack Integral - Marzo 2026',   monto:450000, fecha:'2026-03-01', estado:'facturado' },
     { id:'f2', clienteId:'mock-2', cliente:'Valentina Rodríguez',  concepto:'Asesoría Fiscal - Marzo 2026', monto:195000, fecha:'2026-03-01', estado:'pendiente' },
     { id:'f3', clienteId:'mock-3', cliente:'Diego Fernández',      concepto:'Contabilidad Básica - Mar 2026',monto:155000, fecha:'2026-03-01', estado:'cobrado' },
   ]);
