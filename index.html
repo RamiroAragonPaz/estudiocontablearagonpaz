@@ -990,8 +990,7 @@ function exportToExcel(rows, filename = 'export') {
       const v = r[h] ?? '';
       // Quote cells that contain tabs or newlines
       const s = String(v);
-      return s.includes('	') || s.includes('
-') ? `"${s.replace(/"/g,'""')}"` : s;
+      return s.indexOf('\t') !== -1 || s.indexOf('\n') !== -1 ? '"' + s.replace(/"/g,'""') + '"' : s;
     }).join(sep))
   ];
   const content = '﻿' + lines.join('
