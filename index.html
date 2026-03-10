@@ -724,6 +724,12 @@
     }
 
 
+    /* ── STAT CARD CLICKABLE ──────────────────────── */
+    .stat-card-link { cursor: pointer; position: relative; transition: all 0.2s; }
+    .stat-card-link:hover { transform: translateY(-4px); box-shadow: var(--shadow2); border-color: rgba(201,169,110,0.3); }
+    .stat-card-link:hover .stat-card-arrow { opacity: 1; transform: translateX(0); }
+    .stat-card-arrow { position:absolute; bottom:12px; right:16px; font-size:14px; color:var(--gold); opacity:0; transform:translateX(-4px); transition:all 0.2s; font-weight:700; }
+
     /* ── SIDEBAR COLLAPSIBLE ───────────────────────── */
     :root { --sidebar-collapsed: 64px; }
     .sidebar { transition: width 0.25s cubic-bezier(.4,0,.2,1); overflow: hidden; }
@@ -767,6 +773,12 @@
     }
     .sidebar.collapsed .nav-item:hover::after { opacity: 1; }
 
+
+    /* ── STAT CARD LINK ────────────────────────────────── */
+    .stat-card-link { cursor: pointer; transition: all 0.18s; position: relative; }
+    .stat-card-link:hover { transform: translateY(-3px); box-shadow: var(--shadow2); border-color: rgba(201,169,110,0.3); }
+    .stat-card-arrow { position: absolute; bottom: 14px; right: 16px; font-size: 16px; color: var(--gold); opacity: 0; transition: opacity 0.18s; }
+    .stat-card-link:hover .stat-card-arrow { opacity: 1; }
     /* ── HIGHLIGHT ROW ──────────────────────────────── */
     .highlight-row { background: rgba(201,169,110,0.06) !important; }
 
@@ -962,7 +974,7 @@ function Modal({ title, onClose, children, footer }) {
 }
 
 // ── DASHBOARD ────────────────────────────────────────
-function Dashboard({ clients, vencimientos, tareas, notas }) {
+function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas }) {
   const activeClients = clients.filter(c => c.estado === 'activo');
   const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
   const pendientesHoy = vencimientos
@@ -999,19 +1011,21 @@ function Dashboard({ clients, vencimientos, tareas, notas }) {
       )}
 
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card stat-card-link" onClick={()=>setSection('clientes')} title="Ver clientes">
           <div className="stat-icon">👥</div>
           <div className="stat-label">Clientes Activos</div>
           <div className="stat-value">{activeClients.length}</div>
           <div className="stat-delta">De un total de {clients.length} registrados</div>
+          <div className="stat-card-arrow">→</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-link" onClick={()=>setSection('facturacion')} title="Ver facturación">
           <div className="stat-icon">💰</div>
           <div className="stat-label">Ingresos Mensuales</div>
           <div className="stat-value gold">{fmtShort(totalMensual)}</div>
           <div className="stat-delta up">Facturación recurrente</div>
+          <div className="stat-card-arrow">→</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-link" onClick={()=>setSection('vencimientos')} title="Ver vencimientos">
           <div className="stat-icon">📅</div>
           <div className="stat-label">Vencimientos Próximos</div>
           <div className="stat-value" style={{color: vencUrgentes > 0 ? 'var(--red)' : 'var(--black)'}}>
@@ -1020,8 +1034,9 @@ function Dashboard({ clients, vencimientos, tareas, notas }) {
           <div className="stat-delta" style={{color: vencUrgentes > 0 ? 'var(--red)' : ''}}>
             {vencUrgentes > 0 ? `${vencUrgentes} urgentes` : 'En los próximos 30 días'}
           </div>
+          <div className="stat-card-arrow">→</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-link" onClick={()=>setSection('cobros')} title="Ver cobros pendientes">
           <div className="stat-icon">⏳</div>
           <div className="stat-label">Saldos Pendientes</div>
           <div className="stat-value" style={{color: saldosPendientes > 0 ? 'var(--amber)' : 'var(--green)'}}>
@@ -1030,6 +1045,7 @@ function Dashboard({ clients, vencimientos, tareas, notas }) {
           <div className="stat-delta" style={{color: saldosPendientes > 0 ? 'var(--amber)' : 'var(--green)'}}>
             {saldosPendientes > 0 ? 'A cobrar' : 'Todo al día ✓'}
           </div>
+          <div className="stat-card-arrow">→</div>
         </div>
       </div>
 
@@ -1070,9 +1086,15 @@ function Dashboard({ clients, vencimientos, tareas, notas }) {
           {tareasP.length === 0
             ? <div className="empty-state"><div className="empty-icon">✨</div><p>Todo al día</p></div>
             : tareasP.map(t => (
-              <div className="task-item" key={t.id}>
-                <div className={`task-check ${t.completado ? 'done' : ''}`} />
-                <div>
+              <div className="task-item" key={t.id} style={{opacity: t.completado ? 0.5 : 1, transition:'opacity 0.3s'}}>
+                <div className={`task-check ${t.completado ? 'done' : ''}`}
+                  style={{cursor:'pointer'}}
+                  onClick={async () => {
+                    try { await FB().updateDoc(FB().doc(FB().db,'tareas',t.id),{completado:true}); } catch(e){}
+                    setTareas(prev => prev.map(x => x.id===t.id ? {...x,completado:true} : x));
+                    setTimeout(() => setTareas(prev => prev.filter(x => x.id!==t.id || !x.completado)), 600);
+                  }} />
+                <div style={{flex:1}}>
                   <div className={`task-text ${t.completado ? 'done' : ''}`}>{t.texto}</div>
                   {t.cliente && <div className="task-meta">📁 {t.cliente}</div>}
                 </div>
@@ -1080,7 +1102,9 @@ function Dashboard({ clients, vencimientos, tareas, notas }) {
             ))
           }
           {tareas.filter(t => !t.completado).length > 5 && (
-            <div style={{marginTop:8, fontSize:12, color:'var(--gray)'}}>+ {tareas.filter(t => !t.completado).length - 5} más pendientes</div>
+            <div style={{marginTop:8, fontSize:12, color:'var(--gray)', cursor:'pointer'}} onClick={()=>setSection('tareas')}>
+              + {tareas.filter(t => !t.completado).length - 5} más pendientes →
+            </div>
           )}
         </div>
       </div>
@@ -1169,6 +1193,90 @@ const TRIBUTO_CATEGORIAS  = ['Nacional','Provincial','Municipal','Laboral','Soci
 const TRIBUTO_ORGANISMOS  = ['ARCA','ARBA','Municipal','ART','IGJ/DPPJ','Justicia','Otro'];
 const TRIBUTO_PERIODICIDADES = ['mensual','bimestral','cuatrimestral','semestral','anual','cuotas','variable'];
 
+// ── NOTAS DE CLIENTE ─────────────────────────────────
+function ClientNotas({ cliente }) {
+  const [notas, setNotas]   = useState(cliente.notasList || []);
+  const [modal, setModal]   = useState(false);
+  const [form, setForm]     = useState({ titulo:'', subtitulo:'', cuerpo:'' });
+  const [saving, setSaving] = useState(false);
+
+  // load from firebase
+  React.useEffect(() => {
+    const fb = FB();
+    if (!fb?.db || !cliente.id) return;
+    fb.getDocs(fb.collection(fb.db, `clients/${cliente.id}/notas`))
+      .then(snap => { if (!snap.empty) setNotas(snap.docs.map(d=>({id:d.id,...d.data()}))); })
+      .catch(()=>{});
+  }, [cliente.id]);
+
+  const handleSave = async () => {
+    if (!form.titulo.trim() && !form.cuerpo.trim()) return;
+    setSaving(true);
+    const nota = { titulo: form.titulo.trim(), subtitulo: form.subtitulo.trim(), cuerpo: form.cuerpo.trim(), fecha: todayStr };
+    try {
+      const fb = FB();
+      const ref = await fb.addDoc(fb.collection(fb.db,`clients/${cliente.id}/notas`), {...nota, createdAt:fb.serverTimestamp()});
+      setNotas(prev => [{...nota, id:ref.id}, ...prev]);
+    } catch(e) {
+      setNotas(prev => [{...nota, id:'local-'+Date.now()}, ...prev]);
+    }
+    setSaving(false); setModal(false); setForm({titulo:'',subtitulo:'',cuerpo:''});
+  };
+
+  const del = async (id) => {
+    if (!confirm('¿Eliminar esta nota?')) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,`clients/${cliente.id}/notas`,id)); } catch(e){}
+    setNotas(prev => prev.filter(n => n.id!==id));
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div className="card-title" style={{marginBottom:0}}><span>📝</span> Notas del Cliente</div>
+        <button className="btn btn-gold btn-sm" onClick={()=>{ setForm({titulo:'',subtitulo:'',cuerpo:''}); setModal(true); }}>+ Nueva Nota</button>
+      </div>
+      {notas.length===0
+        ? <div className="card"><div className="empty-state" style={{padding:40}}><div className="empty-icon">📝</div><p>Sin notas. Agregá la primera.</p></div></div>
+        : notas.map(n => (
+          <div key={n.id} className="card" style={{marginBottom:12,borderLeft:'4px solid var(--gold)',padding:'18px 20px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+              <div>
+                {n.titulo && <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,color:'var(--black)',marginBottom:2}}>{n.titulo}</div>}
+                {n.subtitulo && <div style={{fontSize:12,color:'var(--gold)',fontWeight:600,textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace'}}>{n.subtitulo}</div>}
+              </div>
+              <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
+                <div style={{fontSize:11,color:'var(--gray2)',fontFamily:'JetBrains Mono,monospace'}}>{fmtDate(n.fecha)}</div>
+                <button className="btn btn-danger btn-sm" style={{padding:'4px 8px',fontSize:11}} onClick={()=>del(n.id)}>🗑️</button>
+              </div>
+            </div>
+            {n.cuerpo && <div style={{fontSize:14,lineHeight:1.75,color:'var(--black)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--cream2)'}}>{n.cuerpo}</div>}
+          </div>
+        ))
+      }
+      {modal && (
+        <Modal title="📝 Nueva Nota" onClose={()=>setModal(false)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={handleSave} disabled={saving}>{saving?'Guardando...':'Guardar Nota'}</button>
+          </>}>
+          <div className="form-group">
+            <label className="form-label">Título *</label>
+            <input className="form-input" value={form.titulo} onChange={e=>setForm(f=>({...f,titulo:e.target.value}))} placeholder="Ej: Reunión de seguimiento, Alerta importante..." autoFocus />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Subtítulo <span style={{color:'var(--gray2)',fontWeight:400}}>(opcional)</span></label>
+            <input className="form-input" value={form.subtitulo} onChange={e=>setForm(f=>({...f,subtitulo:e.target.value}))} placeholder="Ej: Marzo 2026, Urgente, Fiscal..." />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Contenido</label>
+            <textarea className="form-textarea" style={{minHeight:120}} value={form.cuerpo} onChange={e=>setForm(f=>({...f,cuerpo:e.target.value}))} placeholder="Escribí los detalles de la nota..." />
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 // ── CLIENTES ─────────────────────────────────────────
 function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo }) {
   const [search, setSearch]       = useState('');
@@ -1183,19 +1291,21 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   const [showPass, setShowPass]   = useState({});
   const [showCatalogo, setShowCatalogo] = useState(false);
 
-  const filtered = clients.filter(c => {
-    const q = search.toLowerCase();
-    const matchSearch =
+  const filtered = React.useMemo(() => clients.filter(c => {
+    const q = (search||'').toLowerCase().trim();
+    const matchSearch = !q ||
       (c.nombre||'').toLowerCase().includes(q) ||
       (c.email||'').toLowerCase().includes(q) ||
-      (c.cuit||'').replace(/\D/g,'').includes(q.replace(/\D/g,''));
+      (c.cuit||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')) ||
+      (c.telefono||'').includes(q) ||
+      (c.servicio||'').toLowerCase().includes(q);
     const matchFilter =
       filter === 'todos' ? true :
       filter === 'inactivo' ? c.estado === 'inactivo' :
       filter === 'prospecto' ? c.estado === 'prospecto' :
       c.tipo === filter;
     return matchSearch && matchFilter;
-  });
+  }), [clients, search, filter]);
 
   const handleCuitChange = (val) => {
     const digits = val.replace(/\D/g, '').slice(0, 11);
@@ -1673,11 +1783,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           </div>
         )}
         {detailTab==='notas' && (
-          <div className="card">
-            <div className="card-title"><span>📝</span> Notas</div>
-            {c.notas ? <div style={{fontSize:14,lineHeight:1.7,padding:'14px 16px',background:'var(--cream)',borderRadius:'var(--r2)',borderLeft:'3px solid var(--gold)'}}>{c.notas}</div>
-              : <div className="empty-state" style={{padding:40}}><div className="empty-icon">📝</div><p>Sin notas</p></div>}
-          </div>
+          <ClientNotas cliente={c} />
         )}
       </div>
     );
@@ -1753,6 +1859,232 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   return renderList();
 }
 
+
+// ── COBROS ────────────────────────────────────────────
+const MEDIOS_PAGO = [
+  { id: 'efectivo',    label: 'Efectivo',       icon: '💵', subs: [] },
+  { id: 'transferencia', label: 'Transferencia', icon: '🏦', subs: ['Banco Provincia','Banco Nación','Banco Galicia','Mercado Pago','BBVA','HSBC','Otro banco'] },
+  { id: 'cheque',      label: 'Cheque',         icon: '📄', subs: [] },
+  { id: 'mp',          label: 'Mercado Pago',   icon: '💙', subs: [] },
+];
+const NATURALEZAS_COBRO = [
+  'Honorarios mensuales','Honorario por consulta','Consultoría puntual',
+  'Presentación impositiva','Gestión laboral','Trámite especial',
+  'Asesoría extraordinaria','Regularización de deuda','Adelanto',
+  'Saldo pendiente','Otro',
+];
+
+function Cobros({ clients, setClients, cobros, setCobros }) {
+  const [modal, setModal]     = useState(false);
+  const [form, setForm]       = useState({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
+  const [saving, setSaving]   = useState(false);
+  const [filter, setFilter]   = useState('todos');
+
+  const clientesConDeuda = clients.filter(c => c.saldoPendiente > 0);
+
+  const filtered = filter==='todos' ? cobros :
+    cobros.filter(c => c.medio===filter);
+
+  const totalMes = cobros
+    .filter(c => c.fecha && c.fecha.startsWith(todayStr.slice(0,7)))
+    .reduce((s,c) => s+(c.monto||0),0);
+  const totalGeneral = cobros.reduce((s,c) => s+(c.monto||0),0);
+
+  const selectedClient = clients.find(c=>c.id===form.clienteId);
+
+  const handleSave = async () => {
+    if (!form.clienteId || !form.monto || !form.fecha) return;
+    setSaving(true);
+    const cliente = clients.find(c=>c.id===form.clienteId);
+    const cobro = {
+      clienteId: form.clienteId,
+      cliente: cliente?.nombre||'',
+      monto: Number(form.monto),
+      naturaleza: form.naturaleza,
+      medio: form.medio,
+      submedio: form.submedio||'',
+      fecha: form.fecha,
+      notas: form.notas||'',
+      tipo: 'ingreso',
+    };
+    // Save cobro
+    let saved;
+    try {
+      const fb = FB();
+      const ref = await fb.addDoc(fb.collection(fb.db,'cobros'), {...cobro, createdAt:fb.serverTimestamp()});
+      saved = {...cobro, id:ref.id};
+    } catch(e) {
+      saved = {...cobro, id:'local-'+Date.now()};
+    }
+    setCobros(prev=>[saved,...prev]);
+    // Update client saldo
+    if (cliente) {
+      const newSaldo = Math.max(0, (cliente.saldoPendiente||0) - Number(form.monto));
+      try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
+      setClients(prev=>prev.map(c=>c.id===form.clienteId?{...c,saldoPendiente:newSaldo}:c));
+    }
+    setSaving(false); setModal(false);
+    setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''});
+  };
+
+  const medioActual = MEDIOS_PAGO.find(m=>m.id===form.medio);
+  const MEDIO_LABEL = {efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',cheque:'📄 Cheque',mp:'💙 Mercado Pago'};
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Cobros</div>
+          <div className="page-subtitle">Registrá cobros y generá recibos · {cobros.length} registros</div>
+        </div>
+        <button className="btn btn-gold" onClick={()=>{ setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''}); setModal(true); }}>
+          + Registrar Cobro
+        </button>
+      </div>
+
+      {clientesConDeuda.length>0 && (
+        <div className="alert alert-amber" style={{marginBottom:20}}>
+          <span>⚠️</span>
+          <span><strong>{clientesConDeuda.length} cliente{clientesConDeuda.length>1?'s':''}</strong> con saldo pendiente · Total: <strong>{fmt(clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0))}</strong></span>
+        </div>
+      )}
+
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
+        <div className="stat-card">
+          <div className="stat-icon">💰</div>
+          <div className="stat-label">Cobrado este mes</div>
+          <div className="stat-value gold">{fmtShort(totalMes)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">📊</div>
+          <div className="stat-label">Total histórico</div>
+          <div className="stat-value">{fmtShort(totalGeneral)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">⏳</div>
+          <div className="stat-label">Deuda pendiente</div>
+          <div className="stat-value" style={{color:clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0)>0?'var(--amber)':'var(--green)'}}>
+            {fmtShort(clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+        {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago'],['cheque','📄 Cheque']].map(([f,l])=>(
+          <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
+        ))}
+      </div>
+
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Fecha</th><th>Cliente</th><th>Naturaleza</th>
+              <th>Medio de Pago</th><th style={{textAlign:'right'}}>Monto</th><th>Notas</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length===0
+                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">💰</div><p>Sin cobros registrados</p></div></td></tr>
+                : filtered.map(c=>(
+                  <tr key={c.id}>
+                    <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,whiteSpace:'nowrap'}}>{fmtDate(c.fecha)}</td>
+                    <td style={{fontWeight:600}}>{c.cliente}</td>
+                    <td style={{fontSize:13,color:'var(--gray)'}}>{c.naturaleza}</td>
+                    <td>
+                      <span className="badge badge-blue" style={{fontSize:10}}>
+                        {MEDIO_LABEL[c.medio]||c.medio}{c.submedio?' · '+c.submedio:''}
+                      </span>
+                    </td>
+                    <td style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:'var(--green)'}}>{fmt(c.monto)}</td>
+                    <td style={{fontSize:12,color:'var(--gray)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.notas||'—'}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modal && (
+        <Modal title="💰 Registrar Cobro" onClose={()=>setModal(false)} wide
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Cancelar</button>
+            <button className="btn btn-gold" onClick={handleSave} disabled={saving || !form.clienteId || !form.monto}>
+              {saving?'⏳ Guardando...':'✓ Registrar Cobro'}
+            </button>
+          </>}>
+
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Cliente *</label>
+              <select className="form-select" value={form.clienteId} onChange={e=>setForm(f=>({...f,clienteId:e.target.value,monto:clients.find(c=>c.id===e.target.value)?.saldoPendiente||f.monto}))}>
+                <option value="">Seleccionar cliente...</option>
+                {clients.filter(c=>c.estado==='activo'||c.saldoPendiente>0).map(c=>(
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}{c.saldoPendiente>0?' — Debe '+fmtShort(c.saldoPendiente):''}
+                  </option>
+                ))}
+              </select>
+              {selectedClient?.saldoPendiente>0 && (
+                <div style={{fontSize:11,color:'var(--amber)',marginTop:4}}>⚠️ Saldo pendiente: {fmt(selectedClient.saldoPendiente)}</div>
+              )}
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fecha *</label>
+              <input className="form-input" type="date" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Naturaleza del cobro *</label>
+            <select className="form-select" value={form.naturaleza} onChange={e=>setForm(f=>({...f,naturaleza:e.target.value}))}>
+              {NATURALEZAS_COBRO.map(n=><option key={n}>{n}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Monto (ARS) *</label>
+            <input className="form-input" type="number" value={form.monto} onChange={e=>setForm(f=>({...f,monto:e.target.value}))} placeholder="195000" />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Medio de Pago *</label>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10}}>
+              {MEDIOS_PAGO.map(m=>(
+                <div key={m.id} onClick={()=>setForm(f=>({...f,medio:m.id,submedio:''}))}
+                  style={{padding:'10px 8px',borderRadius:'var(--r2)',cursor:'pointer',textAlign:'center',transition:'all 0.15s',
+                    background:form.medio===m.id?'rgba(201,169,110,0.15)':'var(--cream)',
+                    border:form.medio===m.id?'2px solid var(--gold)':'2px solid transparent'}}>
+                  <div style={{fontSize:22,marginBottom:4}}>{m.icon}</div>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--black)'}}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+            {medioActual?.subs?.length>0 && (
+              <select className="form-select" value={form.submedio} onChange={e=>setForm(f=>({...f,submedio:e.target.value}))}>
+                <option value="">Seleccionar banco/plataforma...</option>
+                {medioActual.subs.map(s=><option key={s}>{s}</option>)}
+              </select>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Notas / Observaciones</label>
+            <textarea className="form-textarea" style={{minHeight:70}} value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Ref. transferencia, comprobante, aclaraciones..." />
+          </div>
+
+          {form.clienteId && form.monto && (
+            <div style={{padding:'12px 16px',background:'var(--green2)',borderRadius:'var(--r2)',border:'1px solid var(--green)',fontSize:13,color:'#065f46'}}>
+              ✓ Se registrará un cobro de <strong>{fmt(Number(form.monto))}</strong> para <strong>{selectedClient?.nombre}</strong> por {form.naturaleza}.
+              {selectedClient?.saldoPendiente>0 && ` El saldo pendiente quedará en ${fmt(Math.max(0,selectedClient.saldoPendiente-Number(form.monto)))}.`}
+            </div>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 // ── VENCIMIENTOS (CALENDARIO) ────────────────────────
 function Vencimientos({ vencimientos, setVencimientos, clients }) {
   const now = new Date();
@@ -1762,6 +2094,7 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
   const [modal,    setModal]    = useState(null);
   const [form,     setForm]     = useState({});
   const [selVenc,  setSelVenc]  = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   // helpers
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
@@ -1850,7 +2183,10 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
           <div className="page-title">Agenda de Vencimientos</div>
           <div className="page-subtitle">Calendario fiscal · {MONTHS_FULL[calMonth]} {calYear}</div>
         </div>
-        <button className="btn btn-gold" onClick={openNew}>+ Nuevo Vencimiento</button>
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setShowImport(true)}>📥 Importar</button>
+          <button className="btn btn-gold" onClick={openNew}>+ Nuevo Vencimiento</button>
+        </div>
       </div>
 
       <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
@@ -2088,96 +2424,183 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
   );
 }
 
-// ── FACTURACIÓN ──────────────────────────────────────
-function Facturacion({ clients }) {
-  const [facturas, setFacturas] = useState([
-    { id: 'f1', clienteId: 'mock-1', cliente: 'TechSolutions S.R.L.', concepto: 'Pack Integral - Marzo 2026', monto: 450000, fecha: '2026-03-01', estado: 'cobrado', mes: '2026-03' },
-    { id: 'f2', clienteId: 'mock-2', cliente: 'Valentina Rodríguez', concepto: 'Asesoría Fiscal - Marzo 2026', monto: 195000, fecha: '2026-03-01', estado: 'pendiente', mes: '2026-03' },
-    { id: 'f3', clienteId: 'mock-3', cliente: 'Diego Fernández', concepto: 'Contabilidad Básica - Marzo 2026', monto: 155000, fecha: '2026-03-01', estado: 'cobrado', mes: '2026-03' },
-    { id: 'f4', clienteId: 'mock-1', cliente: 'TechSolutions S.R.L.', concepto: 'Pack Integral - Febrero 2026', monto: 450000, fecha: '2026-02-01', estado: 'cobrado', mes: '2026-02' },
-    { id: 'f5', clienteId: 'mock-2', cliente: 'Valentina Rodríguez', concepto: 'Asesoría Fiscal - Febrero 2026', monto: 195000, fecha: '2026-02-15', estado: 'cobrado', mes: '2026-02' },
-  ]);
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({});
 
-  const totalCobrado = facturas.filter(f => f.estado === 'cobrado').reduce((s,f) => s + f.monto, 0);
-  const totalPendiente = facturas.filter(f => f.estado === 'pendiente').reduce((s,f) => s + f.monto, 0);
+// ── FINANZAS ──────────────────────────────────────────
+function Finanzas({ cobros, facturas }) {
+  const [mesFilter, setMesFilter] = useState(todayStr.slice(0,7)); // 'YYYY-MM'
+
+  const allMovimientos = [
+    ...cobros.map(c=>({...c, _tipo:'cobro', _color:'var(--green)'})),
+    ...facturas.filter(f=>f.estado==='cobrado').map(f=>({
+      id:f.id, fecha:f.fecha, cliente:f.cliente, monto:f.monto,
+      naturaleza:f.concepto, medio:'—', _tipo:'factura', _color:'var(--blue)',
+    })),
+  ].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+
+  const filtered = mesFilter
+    ? allMovimientos.filter(m=>m.fecha && m.fecha.startsWith(mesFilter))
+    : allMovimientos;
+
+  const totalMes    = filtered.reduce((s,m)=>s+(m.monto||0),0);
+  const soloMeses = [...new Set(allMovimientos.map(m=>m.fecha?.slice(0,7)).filter(Boolean))].sort().reverse();
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Finanzas</div>
+          <div className="page-subtitle">Libro de ingresos · todos los movimientos</div>
+        </div>
+      </div>
+
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
+        <div className="stat-card">
+          <div className="stat-icon">💰</div>
+          <div className="stat-label">Ingresos {mesFilter||'histórico'}</div>
+          <div className="stat-value gold">{fmtShort(totalMes)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">🧾</div>
+          <div className="stat-label">Movimientos</div>
+          <div className="stat-value">{filtered.length}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">📊</div>
+          <div className="stat-label">Promedio por cobro</div>
+          <div className="stat-value">{filtered.length>0?fmtShort(totalMes/filtered.length):'—'}</div>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Período:</span>
+        <button className={`btn btn-sm ${!mesFilter?'btn-primary':'btn-ghost'}`} onClick={()=>setMesFilter('')}>Todos</button>
+        {soloMeses.slice(0,6).map(m=>(
+          <button key={m} className={`btn btn-sm ${mesFilter===m?'btn-primary':'btn-ghost'}`} onClick={()=>setMesFilter(m)}>
+            {MONTHS_FULL[parseInt(m.slice(5,7))-1]} {m.slice(0,4)}
+          </button>
+        ))}
+      </div>
+
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Fecha</th><th>Cliente</th><th>Concepto</th>
+              <th>Medio</th><th>Tipo</th><th style={{textAlign:'right'}}>Monto</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length===0
+                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">📊</div><p>Sin movimientos en este período</p></div></td></tr>
+                : filtered.map(m=>(
+                  <tr key={m.id+m._tipo}>
+                    <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,whiteSpace:'nowrap'}}>{fmtDate(m.fecha)}</td>
+                    <td style={{fontWeight:600,fontSize:13}}>{m.cliente}</td>
+                    <td style={{fontSize:13,color:'var(--gray)'}}>{m.naturaleza}</td>
+                    <td style={{fontSize:12}}>{m.medio&&m.medio!=='—'?m.medio+(m.submedio?' · '+m.submedio:''):'—'}</td>
+                    <td><span className={`badge ${m._tipo==='cobro'?'badge-green':'badge-blue'}`} style={{fontSize:9}}>{m._tipo==='cobro'?'💰 Cobro':'🧾 Factura'}</span></td>
+                    <td style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:m._color}}>{fmt(m.monto)}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── FACTURACIÓN ──────────────────────────────────────
+function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
+  const [modal, setModal]   = useState(null);
+  const [form, setForm]     = useState({});
+  const [filterMes, setFilterMes] = useState('');
+  const now = new Date();
+  const mesActual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const listaFiltrada = filterMes ? facturas.filter(f=>(f.fecha||'').startsWith(filterMes)) : facturas;
+
+  const totalCobrado  = listaFiltrada.filter(f => f.estado === 'cobrado').reduce((s,f) => s + Number(f.monto||0), 0);
+  const totalPendiente = listaFiltrada.filter(f => f.estado === 'pendiente').reduce((s,f) => s + Number(f.monto||0), 0);
 
   const handleSave = async () => {
     if (!form.cliente || !form.monto) return;
+    const payload = {...form, monto: Number(form.monto), clienteId: clients.find(c=>c.nombre===form.cliente)?.id||''};
     try {
-      const ref = await FB().addDoc(FB().collection(FB().db, 'facturas'), {...form, monto: Number(form.monto), createdAt: FB().serverTimestamp()});
-      setFacturas(prev => [...prev, {...form, id: ref.id, monto: Number(form.monto)}]);
+      const ref = await FB().addDoc(FB().collection(FB().db, 'facturas'), {...payload, createdAt: FB().serverTimestamp()});
+      setFacturas(prev => [...prev, {...payload, id: ref.id}]);
     } catch(e) {
-      setFacturas(prev => [...prev, {...form, id: 'local-'+Date.now(), monto: Number(form.monto)}]);
+      setFacturas(prev => [...prev, {...payload, id: 'local-'+Date.now()}]);
     }
     setModal(null);
   };
 
-  const toggleEstado = (id) => {
-    setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: f.estado === 'cobrado' ? 'pendiente' : 'cobrado'} : f));
+  const toggleEstado = async (id) => {
+    const f = facturas.find(x=>x.id===id);
+    const newEstado = f?.estado === 'cobrado' ? 'pendiente' : 'cobrado';
+    try { await FB().updateDoc(FB().doc(FB().db,'facturas',id),{estado:newEstado}); } catch(e){}
+    setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: newEstado} : f));
   };
+
+  const meses = [...new Set(facturas.map(f=>(f.fecha||'').slice(0,7)))].filter(Boolean).sort().reverse();
 
   return (
     <div>
       <div className="page-header">
         <div>
           <div className="page-title">Facturación</div>
-          <div className="page-subtitle">Honorarios y estado de cobros</div>
+          <div className="page-subtitle">Honorarios generados · {filterMes||'Todos los meses'}</div>
         </div>
         <button className="btn btn-gold" onClick={() => { setForm({ estado: 'pendiente', fecha: todayStr }); setModal('new'); }}>+ Nueva Factura</button>
       </div>
 
-      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3, 1fr)', marginBottom:24}}>
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:24}}>
         <div className="stat-card">
           <div className="stat-icon">💰</div>
-          <div className="stat-label">Total Cobrado</div>
+          <div className="stat-label">Cobrado</div>
           <div className="stat-value gold">{fmtShort(totalCobrado)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">⏳</div>
-          <div className="stat-label">Pendiente de Cobro</div>
+          <div className="stat-label">Pendiente</div>
           <div className="stat-value" style={{color: totalPendiente > 0 ? 'var(--amber)' : 'var(--green)'}}>{fmtShort(totalPendiente)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">📋</div>
-          <div className="stat-label">Total Facturas</div>
-          <div className="stat-value">{facturas.length}</div>
+          <div className="stat-label">Comprobantes</div>
+          <div className="stat-value">{listaFiltrada.length}</div>
         </div>
       </div>
 
-      <div className="card">
+      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
+        <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Mes:</span>
+        <button className={`btn btn-sm ${!filterMes?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes('')}>Todos</button>
+        {meses.slice(0,6).map(m=>(
+          <button key={m} className={`btn btn-sm ${filterMes===m?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes(m)}>{m}</button>
+        ))}
+      </div>
+
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
         <div className="table-wrap">
           <table>
-            <thead>
-              <tr>
-                <th>Concepto</th>
-                <th>Cliente</th>
-                <th>Monto</th>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th style={{paddingLeft:16}}>Concepto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Estado</th><th>Acción</th>
+            </tr></thead>
             <tbody>
-              {facturas.sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
+              {[...listaFiltrada].sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
                 <tr key={f.id}>
-                  <td style={{fontWeight:500}}>{f.concepto}</td>
+                  <td style={{paddingLeft:16,fontWeight:500}}>{f.concepto}</td>
                   <td style={{fontSize:13}}>{f.cliente}</td>
-                  <td style={{fontFamily:'JetBrains Mono, monospace', fontWeight:700}}>{fmt(f.monto)}</td>
-                  <td style={{fontFamily:'JetBrains Mono, monospace', fontSize:13}}>{fmtDate(f.fecha)}</td>
+                  <td style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700}}>{fmt(f.monto)}</td>
+                  <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13}}>{fmtDate(f.fecha)}</td>
+                  <td><span className={`badge ${f.estado==='cobrado'?'badge-green':'badge-amber'}`}>{f.estado==='cobrado'?'✓ Cobrado':'⏳ Pendiente'}</span></td>
                   <td>
-                    <span className={`badge ${f.estado === 'cobrado' ? 'badge-green' : 'badge-amber'}`}>
-                      {f.estado === 'cobrado' ? '✓ Cobrado' : '⏳ Pendiente'}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="btn btn-sm btn-ghost" onClick={() => toggleEstado(f.id)}>
-                      {f.estado === 'cobrado' ? 'Marcar Pendiente' : '✓ Marcar Cobrado'}
+                    <button className="btn btn-sm btn-ghost" style={{fontSize:12}} onClick={()=>toggleEstado(f.id)}>
+                      {f.estado==='cobrado'?'Marcar Pendiente':'✓ Cobrado'}
                     </button>
                   </td>
                 </tr>
               ))}
+              {listaFiltrada.length===0 && <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--gray2)'}}>Sin comprobantes</td></tr>}
             </tbody>
           </table>
         </div>
@@ -2374,6 +2797,396 @@ function Notas({ notas, setNotas, clients }) {
   );
 }
 
+
+// ── IMPORTAR VENCIMIENTOS ────────────────────────────
+function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose }) {
+  const [tab, setTab]         = useState('manual');
+  const [csvText, setCsvText] = useState('');
+  const [manualRows, setManualRows] = useState([
+    {nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}
+  ]);
+  const [saving, setSaving]   = useState(false);
+  const [imported, setImported] = useState(0);
+
+  const addRow = () => setManualRows(r=>[...r,{nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}]);
+  const upRow  = (i,k,v) => setManualRows(r=>r.map((x,j)=>j===i?{...x,[k]:v}:x));
+  const delRow = (i) => setManualRows(r=>r.filter((_,j)=>j!==i));
+
+  const parseCSV = (text) => {
+    const lines = text.trim().split('\n').filter(l=>l.trim());
+    return lines.map(l=>{
+      const parts = l.split(',').map(p=>p.trim().replace(/^"|"$/g,''));
+      return { nombre:parts[0]||'', tipo:parts[1]||'fiscal', fecha:parts[2]||'', clientes:parts[3]||'', prioridad:parts[4]||'media' };
+    }).filter(r=>r.nombre&&r.fecha);
+  };
+
+  const handleImport = async (rows) => {
+    const valid = rows.filter(r=>r.nombre&&r.fecha);
+    if (!valid.length) return;
+    setSaving(true);
+    let count=0;
+    const newVenc=[];
+    for (const r of valid) {
+      const v = {...r, completado:false};
+      try {
+        const fb=FB();
+        const ref=await fb.addDoc(fb.collection(fb.db,'vencimientos'),{...v,createdAt:fb.serverTimestamp()});
+        newVenc.push({...v,id:ref.id}); count++;
+      } catch(e) {
+        newVenc.push({...v,id:'local-'+Date.now()+count}); count++;
+      }
+    }
+    setVencimientos(prev=>[...prev,...newVenc]);
+    setImported(count); setSaving(false);
+    if (tab==='csv') setCsvText('');
+    else setManualRows([{nombre:'',tipo:'fiscal',fecha:'',clientes:'',prioridad:'media'}]);
+  };
+
+  return (
+    <Modal title="📥 Importar Vencimientos" onClose={onClose} wide
+      footer={<>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cerrar</button>
+        <button className="btn btn-gold" disabled={saving}
+          onClick={()=>handleImport(tab==='csv'?parseCSV(csvText):manualRows)}>
+          {saving?'⏳ Importando...':'📥 Importar'}
+        </button>
+      </>}>
+      {imported>0 && (
+        <div style={{padding:'10px 14px',background:'var(--green2)',borderRadius:8,marginBottom:16,color:'#065f46',fontSize:13,borderLeft:'3px solid var(--green)'}}>
+          ✓ {imported} vencimiento{imported>1?'s':''} importado{imported>1?'s':''} correctamente
+        </div>
+      )}
+      <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content'}}>
+        {[['manual','✏️ Carga manual'],['csv','📄 CSV / Texto'],['info','ℹ️ Ayuda']].map(([t,l])=>(
+          <button key={t} className={`tab ${tab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setTab(t)}>{l}</button>
+        ))}
+      </div>
+      {tab==='manual' && (
+        <div>
+          <p style={{fontSize:12,color:'var(--gray)',marginBottom:14}}>Completá cada fila con los datos del vencimiento. Podés agregar varios a la vez.</p>
+          {manualRows.map((row,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 2fr 1fr auto',gap:8,marginBottom:10,alignItems:'end'}}>
+              <div className="form-group" style={{marginBottom:0}}>
+                {i===0&&<label className="form-label">Descripción</label>}
+                <input className="form-input" value={row.nombre} onChange={e=>upRow(i,'nombre',e.target.value)} placeholder="IVA Mensual - Abril" />
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                {i===0&&<label className="form-label">Tipo</label>}
+                <select className="form-select" value={row.tipo} onChange={e=>upRow(i,'tipo',e.target.value)}>
+                  <option value="fiscal">Fiscal</option>
+                  <option value="laboral">Laboral</option>
+                  <option value="societario">Societario</option>
+                </select>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                {i===0&&<label className="form-label">Fecha</label>}
+                <input className="form-input" type="date" value={row.fecha} onChange={e=>upRow(i,'fecha',e.target.value)} />
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                {i===0&&<label className="form-label">Cliente(s)</label>}
+                <select className="form-select" value={row.clientes} onChange={e=>upRow(i,'clientes',e.target.value)}>
+                  <option value="">General</option>
+                  <option value="Todos los monotributistas">Todos los monotributistas</option>
+                  {clients.map(c=><option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                {i===0&&<label className="form-label">Prioridad</label>}
+                <select className="form-select" value={row.prioridad} onChange={e=>upRow(i,'prioridad',e.target.value)}>
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                  <option value="baja">Baja</option>
+                </select>
+              </div>
+              <div style={{paddingTop:i===0?22:0}}>
+                <button className="btn btn-danger btn-sm" style={{height:38}} onClick={()=>delRow(i)}>✕</button>
+              </div>
+            </div>
+          ))}
+          <button className="btn btn-ghost btn-sm" style={{marginTop:4}} onClick={addRow}>+ Agregar fila</button>
+        </div>
+      )}
+      {tab==='csv' && (
+        <div>
+          <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,marginBottom:12,fontSize:12,color:'#1e40af'}}>
+            <strong>Formato CSV:</strong> descripción, tipo (fiscal/laboral), fecha (YYYY-MM-DD), cliente, prioridad (alta/media/baja)<br/>
+            Ejemplo: <code>IVA Mensual TechSolutions,fiscal,2026-04-18,TechSolutions S.R.L.,alta</code>
+          </div>
+          <textarea className="form-textarea" style={{minHeight:200,fontFamily:'JetBrains Mono,monospace',fontSize:12}}
+            value={csvText} onChange={e=>setCsvText(e.target.value)}
+            placeholder={"IVA Mensual - Abril,fiscal,2026-04-18,TechSolutions S.R.L.,alta\nMonotributo - Abril,fiscal,2026-04-20,Diego Fernández,media"} />
+          {csvText && (
+            <div style={{fontSize:12,color:'var(--gray)',marginTop:6}}>
+              → {parseCSV(csvText).length} fila{parseCSV(csvText).length!==1?'s':''} válida{parseCSV(csvText).length!==1?'s':''}
+            </div>
+          )}
+        </div>
+      )}
+      {tab==='info' && (
+        <div style={{fontSize:13,lineHeight:1.8,color:'var(--black)'}}>
+          <div style={{padding:'14px 16px',background:'var(--amber2)',borderRadius:8,marginBottom:16,borderLeft:'3px solid var(--amber)'}}>
+            <strong>¿Por qué no se conecta directamente con ARCA?</strong><br/>
+            ARCA requiere CUIT + clave fiscal + reCAPTCHA para acceder. No existe una API pública que permita conexión programática sin credenciales.
+          </div>
+          <p><strong>Opciones disponibles:</strong></p>
+          <ul style={{paddingLeft:20,marginTop:8}}>
+            <li style={{marginBottom:8}}><strong>Carga manual:</strong> Ingresá los vencimientos uno por uno o en lote usando la pestaña "Carga manual".</li>
+            <li style={{marginBottom:8}}><strong>Importar CSV:</strong> Descargá el calendario fiscal de ARCA (publicado en PDF cada año), convertilo a CSV y usá la pestaña "CSV / Texto".</li>
+            <li style={{marginBottom:8}}><strong>Auto-generado:</strong> Al asignar tributos a un cliente, el sistema ya genera automáticamente sus vencimientos recurrentes (mensual, bimestral).</li>
+            <li style={{marginBottom:8}}><strong>Plantilla recurrente:</strong> Podés cargar un mes y el sistema repetirá el patrón. Funcionalidad planificada para próximas versiones.</li>
+          </ul>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+
+// ── COBROS ───────────────────────────────────────────
+const NATURALEZAS_COBRO = [
+  'Honorarios Mensuales','Honorario por Consulta','Asesoría Fiscal',
+  'Presentación Impositiva','Gestión Laboral','Contabilidad Mensual',
+  'Balance Anual','Auditoría','Consultoría Estratégica','Otro'
+];
+const MEDIOS_COBRO = {
+  'Efectivo': [],
+  'Transferencia': ['Banco Provincia','Mercado Pago','Banco Nación','Santander','Galicia','BBVA','Brubank','Ualá','Otro banco'],
+  'Cheque': [],
+  'Débito / Crédito': [],
+};
+
+function Cobros({ clients, facturas, setFacturas, cobros, setCobros }) {
+  const [modal, setModal]   = useState(false);
+  const [form, setForm]     = useState({});
+  const [saving, setSaving] = useState(false);
+  const [filterMes, setFilterMes] = useState('');
+
+  const now = new Date();
+  const mesActual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const mesFilter = filterMes || mesActual;
+
+  const cobrosFiltered = cobros.filter(c => !filterMes || (c.fecha||'').startsWith(filterMes));
+  const totalMes = cobrosFiltered.reduce((s,c) => s+Number(c.monto||0), 0);
+
+  const clientesConDeuda = clients.filter(c => (c.saldoPendiente||0) > 0 || facturas.some(f => f.clienteId===c.id && f.estado==='pendiente'));
+
+  const openModal = (cliente) => {
+    const deudaFact = facturas.find(f => f.clienteId===cliente?.id && f.estado==='pendiente');
+    setForm({
+      clienteId: cliente?.id||'',
+      clienteNombre: cliente?.nombre||'',
+      monto: deudaFact?.monto||cliente?.saldoPendiente||'',
+      naturaleza: 'Honorarios Mensuales',
+      medio: 'Transferencia',
+      submedio: 'Mercado Pago',
+      fecha: todayStr,
+      facturaId: deudaFact?.id||'',
+      obs: '',
+    });
+    setModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.clienteNombre || !form.monto) return;
+    setSaving(true);
+    const payload = {
+      clienteId: form.clienteId||'',
+      clienteNombre: form.clienteNombre,
+      monto: Number(form.monto),
+      naturaleza: form.naturaleza,
+      medio: form.medio,
+      submedio: form.submedio||'',
+      fecha: form.fecha||todayStr,
+      facturaId: form.facturaId||'',
+      obs: form.obs||'',
+      nroRecibo: `RC-${Date.now().toString().slice(-6)}`,
+    };
+    let cobro;
+    try {
+      const ref = await FB().addDoc(FB().collection(FB().db,'cobros'), {...payload, createdAt:FB().serverTimestamp()});
+      cobro = {...payload, id:ref.id};
+    } catch(e) {
+      cobro = {...payload, id:'local-'+Date.now()};
+    }
+    setCobros(prev => [cobro, ...prev]);
+
+    // Mark linked factura as cobrado
+    if (form.facturaId) {
+      try { await FB().updateDoc(FB().doc(FB().db,'facturas',form.facturaId),{estado:'cobrado',cobradoEl:payload.fecha}); } catch(e){}
+      setFacturas(prev => prev.map(f => f.id===form.facturaId ? {...f, estado:'cobrado'} : f));
+    }
+    // reduce saldoPendiente on client
+    if (form.clienteId) {
+      const cl = clients.find(c=>c.id===form.clienteId);
+      if (cl && cl.saldoPendiente>0) {
+        const newSaldo = Math.max(0, (cl.saldoPendiente||0) - Number(form.monto));
+        try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
+      }
+    }
+    setSaving(false); setModal(false);
+  };
+
+  const meses = [...new Set(cobros.map(c=>(c.fecha||'').slice(0,7)))].sort().reverse();
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">🧾 Cobros</div>
+          <div className="page-subtitle">Recibos y gestión de pagos de clientes</div>
+        </div>
+        <button className="btn btn-gold" onClick={()=>openModal(null)}>+ Registrar Cobro</button>
+      </div>
+
+      {/* DEUDAS PENDIENTES */}
+      {clientesConDeuda.length > 0 && (
+        <div className="card" style={{marginBottom:20,borderLeft:'4px solid var(--amber)'}}>
+          <div className="card-title"><span>⚠️</span> Clientes con saldo pendiente</div>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+            {clientesConDeuda.map(c => {
+              const deuda = facturas.filter(f=>f.clienteId===c.id&&f.estado==='pendiente').reduce((s,f)=>s+f.monto,0) || c.saldoPendiente;
+              return (
+                <div key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'var(--amber2)',borderRadius:'var(--r2)',cursor:'pointer',border:'1px solid rgba(201,169,110,0.3)'}}
+                  onClick={()=>openModal(c)}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700}}>{c.nombre}</div>
+                    <div style={{fontSize:12,color:'var(--amber)',fontFamily:'JetBrains Mono,monospace',fontWeight:700}}>{fmt(deuda)}</div>
+                  </div>
+                  <div style={{background:'var(--amber)',color:'white',borderRadius:'var(--r2)',padding:'5px 10px',fontSize:12,fontWeight:700}}>Cobrar →</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* STATS */}
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
+        <div className="stat-card">
+          <div className="stat-icon">💵</div>
+          <div className="stat-label">Cobrado este mes</div>
+          <div className="stat-value gold">{fmtShort(cobros.filter(c=>(c.fecha||'').startsWith(mesActual)).reduce((s,c)=>s+Number(c.monto||0),0))}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">📋</div>
+          <div className="stat-label">Recibos emitidos</div>
+          <div className="stat-value">{cobros.filter(c=>(c.fecha||'').startsWith(mesActual)).length}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">⏳</div>
+          <div className="stat-label">Pendiente de cobro</div>
+          <div className="stat-value" style={{color:'var(--amber)'}}>{fmtShort(facturas.filter(f=>f.estado==='pendiente').reduce((s,f)=>s+f.monto,0))}</div>
+        </div>
+      </div>
+
+      {/* FILTRO MES */}
+      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center'}}>
+        <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Filtrar por mes:</span>
+        <button className={`btn btn-sm ${!filterMes?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes('')}>Todos</button>
+        {meses.slice(0,6).map(m=>(
+          <button key={m} className={`btn btn-sm ${filterMes===m?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes(m)}>{m}</button>
+        ))}
+      </div>
+
+      {/* TABLA */}
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              <th style={{paddingLeft:16}}>N° Recibo</th><th>Cliente</th><th>Naturaleza</th>
+              <th>Medio</th><th>Monto</th><th>Fecha</th>
+            </tr></thead>
+            <tbody>
+              {cobrosFiltered.length===0
+                ? <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--gray2)'}}>Sin cobros registrados</td></tr>
+                : cobrosFiltered.map(c=>(
+                  <tr key={c.id}>
+                    <td style={{paddingLeft:16,fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gold)',fontWeight:700}}>{c.nroRecibo||'—'}</td>
+                    <td style={{fontWeight:600}}>{c.clienteNombre}</td>
+                    <td style={{fontSize:13}}>{c.naturaleza}</td>
+                    <td><span className="badge badge-blue" style={{fontSize:10}}>{c.medio}{c.submedio?` · ${c.submedio}`:''}</span></td>
+                    <td style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:'var(--green)'}}>{fmt(c.monto)}</td>
+                    <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtDate(c.fecha)}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MODAL COBRO */}
+      {modal && (
+        <Modal title="🧾 Registrar Cobro" onClose={()=>setModal(false)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={handleSave} disabled={saving}>{saving?'Guardando...':'✓ Registrar Cobro'}</button>
+          </>}>
+          <div className="form-group">
+            <label className="form-label">Cliente</label>
+            <select className="form-select" value={form.clienteId||''} onChange={e=>{
+              const cl = clients.find(c=>c.id===e.target.value);
+              const deudaFact = facturas.find(f=>f.clienteId===e.target.value&&f.estado==='pendiente');
+              setForm(f=>({...f, clienteId:e.target.value, clienteNombre:cl?.nombre||'', monto:deudaFact?.monto||cl?.saldoPendiente||f.monto, facturaId:deudaFact?.id||''}));
+            }}>
+              <option value="">Seleccionar cliente...</option>
+              {clients.filter(c=>c.estado!=='inactivo').map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Naturaleza del cobro</label>
+            <select className="form-select" value={form.naturaleza||''} onChange={e=>setForm(f=>({...f,naturaleza:e.target.value}))}>
+              {NATURALEZAS_COBRO.map(n=><option key={n}>{n}</option>)}
+            </select>
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Medio de cobro</label>
+              <select className="form-select" value={form.medio||'Transferencia'} onChange={e=>setForm(f=>({...f,medio:e.target.value,submedio:''}))}>
+                {Object.keys(MEDIOS_COBRO).map(m=><option key={m}>{m}</option>)}
+              </select>
+            </div>
+            {MEDIOS_COBRO[form.medio||'Transferencia']?.length > 0 && (
+              <div className="form-group">
+                <label className="form-label">Banco / Plataforma</label>
+                <select className="form-select" value={form.submedio||''} onChange={e=>setForm(f=>({...f,submedio:e.target.value}))}>
+                  <option value="">Seleccionar...</option>
+                  {MEDIOS_COBRO[form.medio].map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Monto (ARS)</label>
+              <input className="form-input" type="number" value={form.monto||''} onChange={e=>setForm(f=>({...f,monto:e.target.value}))} placeholder="195000" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fecha</label>
+              <input className="form-input" type="date" value={form.fecha||todayStr} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} />
+            </div>
+          </div>
+          {form.facturaId && (
+            <div style={{padding:'8px 12px',background:'var(--green2)',borderRadius:'var(--r2)',fontSize:12,color:'#065f46',marginBottom:8}}>
+              ✓ Se marcará como cobrada la factura vinculada automáticamente
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">Observaciones <span style={{color:'var(--gray2)',fontWeight:400}}>(opcional)</span></label>
+            <input className="form-input" value={form.obs||''} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} placeholder="Transferencia recibida, número de operación..." />
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── VENCIMIENTOS IMPORT ───────────────────────────────
+// Respecto a la integración con ARCA:
+// ARCA/AFIP no ofrece una API pública REST para vencimientos individuales.
+// El módulo de importación CSV/Excel es la solución más práctica.
+// El formato esperado es: fecha,nombre,organismo,clientes,prioridad
+
 // ── GESTOR DE TRIBUTOS MODAL ─────────────────────────
 function GestorTributos({ tributosCatalogo, setTributosCatalogo, onClose }) {
   const [tab, setTab]       = useState('lista');
@@ -2514,6 +3327,12 @@ function App() {
   const [clients, setClients]             = useState(MOCK_CLIENTS);
   const [vencimientos, setVencimientos]   = useState(CALENDARIO_2026);
   const [tributosCatalogo, setTributosCatalogo] = useState(TRIBUTOS_SEED);
+  const [cobros, setCobros]               = useState([]);
+  const [facturas, setFacturas]           = useState([
+    { id:'f1', clienteId:'mock-1', cliente:'TechSolutions S.R.L.', concepto:'Pack Integral - Marzo 2026',   monto:450000, fecha:'2026-03-01', estado:'cobrado' },
+    { id:'f2', clienteId:'mock-2', cliente:'Valentina Rodríguez',  concepto:'Asesoría Fiscal - Marzo 2026', monto:195000, fecha:'2026-03-01', estado:'pendiente' },
+    { id:'f3', clienteId:'mock-3', cliente:'Diego Fernández',      concepto:'Contabilidad Básica - Mar 2026',monto:155000, fecha:'2026-03-01', estado:'cobrado' },
+  ]);
   const [tareas, setTareas]               = useState([
     { id:'t1', texto:'Llamar a TechSolutions por nómina de abril', cliente:'TechSolutions S.R.L.', completado:false, fecha:'2026-03-10' },
     { id:'t2', texto:'Enviar recordatorio de vencimiento IVA', cliente:'TechSolutions S.R.L.', completado:false, fecha:'2026-03-10' },
@@ -2584,6 +3403,47 @@ function App() {
         setNotas(prev => { const m=['n1','n2']; return [...prev.filter(n=>m.includes(n.id)),...data]; });
       }
     }).catch(()=>{});
+    // cobros
+    fb.getDocs(fb.collection(fb.db,'cobros')).then(snap => {
+      if (!snap.empty) setCobros(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha)));
+    }).catch(()=>{});
+    // facturas
+    fb.getDocs(fb.collection(fb.db,'facturas')).then(snap => {
+      if (!snap.empty) {
+        const data=snap.docs.map(d=>({id:d.id,...d.data()}));
+        setFacturas(prev=>{const m=['f1','f2','f3'];return[...prev.filter(f=>m.includes(f.id)),...data];});
+      }
+    }).catch(()=>{});
+    // auto-generate monthly charges on first of month
+    const todayD=new Date();
+    const monthKey=`charges-${todayD.getFullYear()}-${todayD.getMonth()}`;
+    if (todayD.getDate()>=1 && !localStorage.getItem(monthKey)) {
+      // will run after clients load — use a small delay
+      setTimeout(()=>{
+        setClients(current => {
+          const active=current.filter(c=>c.estado==='activo'&&c.honorario>0);
+          const mesLabel=`${MONTHS_FULL[todayD.getMonth()]} ${todayD.getFullYear()}`;
+          const newFacts=active.map(c=>({
+            id:'auto-'+c.id+'-'+monthKey,
+            clienteId:c.id, cliente:c.nombre,
+            concepto:`${c.servicio||'Honorarios'} - ${mesLabel}`,
+            monto:c.honorario, fecha:todayStr, estado:'pendiente'
+          }));
+          setFacturas(prev=>{
+            const autoIds=newFacts.map(f=>f.id);
+            const filtered=prev.filter(f=>!autoIds.includes(f.id));
+            return [...filtered,...newFacts];
+          });
+          // Save to firebase
+          const fb2=FB();
+          newFacts.forEach(f=>{
+            fb2?.addDoc(fb2.collection(fb2.db,'facturas'),{...f,autoGenerado:true,createdAt:fb2.serverTimestamp()}).catch(()=>{});
+          });
+          localStorage.setItem(monthKey,'done');
+          return current;
+        });
+      },1500);
+    }
   }, [user]);
 
   const handleLogout = async () => { try { await FB().signOut(FB().auth); } catch(e){} setUser(null); };
@@ -2605,16 +3465,20 @@ function App() {
     { id:'facturacion',  label:'Facturación',  icon:'💰' },
     { id:'tareas',       label:'Tareas',       icon:'✅', badge:tareas.filter(t=>!t.completado).length||null, badgeClass:'amber' },
     { id:'notas',        label:'Notas',        icon:'📝' },
+    { id:'cobros',       label:'Cobros',       icon:'🧾' },
+    { id:'finanzas',     label:'Finanzas',     icon:'📊' },
   ];
 
   const renderSection = () => {
     switch(section) {
-      case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} />;
+      case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
       case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
       case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
-      case 'facturacion':  return <Facturacion clients={clients} />;
+      case 'facturacion':  return <Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
       case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
       case 'notas':        return <Notas notas={notas} setNotas={setNotas} clients={clients} />;
+      case 'cobros':       return <Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
+      case 'finanzas':     return <Finanzas cobros={cobros} facturas={facturas} />;
       default:             return null;
     }
   };
