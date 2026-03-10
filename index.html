@@ -1,0 +1,2678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aragón Paz · Estudio Contable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- React + Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // 🔥 Estudio Contable Aragón Paz — Firebase Config
+    const firebaseConfig = {
+      apiKey:            "AIzaSyA8-tNN8_9p_Gu3W4qnKzT17OstQ8IC0zs",
+      authDomain:        "estudioaragonpaz.firebaseapp.com",
+      projectId:         "estudioaragonpaz",
+      storageBucket:     "estudioaragonpaz.firebasestorage.app",
+      messagingSenderId: "362749461014",
+      appId:             "1:362749461014:web:b2720a67b7e1cfded46b37",
+      measurementId:     "G-PW8QLZZE5X"
+    };
+
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    // Expose to window so React (non-module) can access
+    window.__FB__ = { auth, db, GoogleAuthProvider, signInWithPopup, signOut,
+      onAuthStateChanged, collection, addDoc, getDocs, updateDoc, deleteDoc,
+      doc, query, orderBy, onSnapshot, serverTimestamp };
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:    #111110;
+      --black2:   #1c1c1a;
+      --black3:   #2a2a28;
+      --gold:     #c9a96e;
+      --gold2:    #e2c48a;
+      --gold3:    #f0ddb8;
+      --cream:    #faf8f3;
+      --cream2:   #f2ede3;
+      --white:    #ffffff;
+      --green:    #2d9a6b;
+      --green2:   #d1f0e4;
+      --red:      #c0392b;
+      --red2:     #fde8e8;
+      --amber:    #c97c1e;
+      --amber2:   #fef3d8;
+      --blue:     #2563eb;
+      --blue2:    #dbeafe;
+      --gray:     #6b6b66;
+      --gray2:    #9b9b96;
+      --border:   rgba(201,169,110,0.2);
+      --shadow:   0 4px 24px rgba(17,17,16,0.08);
+      --shadow2:  0 12px 48px rgba(17,17,16,0.14);
+      --r:        12px;
+      --r2:       8px;
+      --sidebar:  260px;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--cream);
+      color: var(--black);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── SCROLLBAR ─────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--cream2); }
+    ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
+
+    /* ── LOGIN SCREEN ─────────────────────────────── */
+    .login-screen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--black);
+      position: relative;
+      overflow: hidden;
+    }
+    .login-screen::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 50%, rgba(201,169,110,0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 60% at 80% 20%, rgba(201,169,110,0.05) 0%, transparent 70%);
+    }
+    .login-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(201,169,110,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(201,169,110,0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+    .login-card {
+      position: relative;
+      z-index: 1;
+      background: rgba(28,28,26,0.92);
+      border: 1px solid rgba(201,169,110,0.25);
+      border-radius: 24px;
+      padding: 64px 56px;
+      text-align: center;
+      max-width: 440px;
+      width: 90%;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 32px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(201,169,110,0.15);
+    }
+    .login-logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 28px;
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--black);
+      box-shadow: 0 8px 24px rgba(201,169,110,0.3);
+    }
+    .login-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--gold2);
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    .login-sub {
+      font-size: 14px;
+      color: var(--gray2);
+      margin-bottom: 40px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .btn-google {
+      width: 100%;
+      padding: 16px 24px;
+      background: var(--white);
+      border: none;
+      border-radius: var(--r);
+      font-family: 'Montserrat', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--black);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .btn-google:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .btn-google svg { width: 20px; height: 20px; }
+    .login-footer {
+      margin-top: 32px;
+      font-size: 12px;
+      color: rgba(155,155,150,0.6);
+    }
+
+    /* ── LAYOUT ────────────────────────────────────── */
+    .app-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── SIDEBAR ───────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar);
+      background: var(--black);
+      position: fixed;
+      top: 0; left: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid rgba(201,169,110,0.12);
+      z-index: 100;
+      overflow-y: auto;
+    }
+    .sidebar-header {
+      padding: 28px 20px 24px;
+      border-bottom: 1px solid rgba(201,169,110,0.12);
+    }
+    .sidebar-brand {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--gold2);
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+    }
+    .sidebar-brand-sub {
+      font-size: 10px;
+      color: var(--gray2);
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: 16px 12px;
+    }
+    .nav-section-label {
+      font-size: 10px;
+      color: rgba(155,155,150,0.5);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 0 8px;
+      margin: 16px 0 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 11px 12px;
+      border-radius: var(--r2);
+      cursor: pointer;
+      transition: all 0.18s;
+      color: rgba(250,248,243,0.55);
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      font-family: 'Montserrat', sans-serif;
+    }
+    .nav-item:hover { background: rgba(201,169,110,0.08); color: var(--gold3); }
+    .nav-item.active {
+      background: rgba(201,169,110,0.14);
+      color: var(--gold2);
+      border-color: rgba(201,169,110,0.2);
+    }
+    .nav-item .nav-icon { font-size: 16px; flex-shrink: 0; }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--red);
+      color: white;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 2px 7px;
+      border-radius: 99px;
+      font-weight: 700;
+    }
+    .nav-badge.amber { background: var(--amber); }
+    .sidebar-user {
+      padding: 16px 20px;
+      border-top: 1px solid rgba(201,169,110,0.12);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: var(--black);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .user-name { font-size: 13px; color: var(--gold3); font-weight: 600; }
+    .user-role { font-size: 11px; color: var(--gray2); }
+    .btn-logout {
+      margin-left: auto;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--gray2);
+      font-size: 16px;
+      padding: 4px;
+      transition: color 0.2s;
+    }
+    .btn-logout:hover { color: var(--red); }
+
+    /* ── MAIN CONTENT ──────────────────────────────── */
+    .main {
+      margin-left: 10px;
+      flex: 1;
+      padding: 32px 36px;
+      min-height: 100vh;
+    }
+    .page-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+    .page-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--black);
+      letter-spacing: -0.8px;
+      line-height: 1;
+    }
+    .page-subtitle {
+      font-size: 14px;
+      color: var(--gray);
+      margin-top: 6px;
+    }
+    .page-date {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--gray2);
+      text-align: right;
+    }
+
+    /* ── CARDS ─────────────────────────────────────── */
+    .card {
+      background: var(--white);
+      border-radius: var(--r);
+      border: 1px solid rgba(201,169,110,0.12);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .card-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--black);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title span { font-size: 18px; }
+
+    /* ── STAT CARDS ────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--white);
+      border-radius: var(--r);
+      border: 1px solid rgba(201,169,110,0.12);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+      transition: all 0.2s;
+      cursor: default;
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow2); }
+    .stat-label { font-size: 11px; color: var(--gray2); letter-spacing: 1.5px; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; margin-bottom: 8px; }
+    .stat-value { font-family: 'Montserrat', sans-serif; font-size: 28px; font-weight: 700; color: var(--black); letter-spacing: -0.5px; }
+    .stat-value.gold { color: var(--gold); }
+    .stat-delta { font-size: 12px; color: var(--gray); margin-top: 4px; }
+    .stat-delta.up { color: var(--green); }
+    .stat-delta.down { color: var(--red); }
+    .stat-icon { font-size: 24px; margin-bottom: 10px; }
+
+    /* ── GRID LAYOUTS ──────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .grid-6040 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+
+    /* ── TABLE ─────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border-radius: var(--r2); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead { background: var(--cream2); }
+    th {
+      padding: 12px 14px;
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--gray);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--cream2);
+      font-weight: 500;
+    }
+    td { padding: 13px 14px; border-bottom: 1px solid var(--cream2); color: var(--black); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--cream); transition: background 0.15s; }
+
+    /* ── BADGES ────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.3px;
+    }
+    .badge-green { background: var(--green2); color: #186344; }
+    .badge-red { background: var(--red2); color: #991b1b; }
+    .badge-amber { background: var(--amber2); color: #92400e; }
+    .badge-blue { background: var(--blue2); color: #1e40af; }
+    .badge-gray { background: var(--cream2); color: var(--gray); }
+    .badge-gold { background: rgba(201,169,110,0.15); color: var(--amber); }
+
+    /* ── BUTTONS ───────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 18px; border-radius: var(--r2);
+      font-family: 'Montserrat', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none; transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--black); color: var(--gold2);
+      border: 1px solid rgba(201,169,110,0.2);
+    }
+    .btn-primary:hover { background: var(--black2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(17,17,16,0.2); }
+    .btn-gold {
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      color: var(--black); font-weight: 700;
+    }
+    .btn-gold:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201,169,110,0.35); }
+    .btn-ghost {
+      background: transparent; color: var(--gray);
+      border: 1px solid var(--cream2);
+    }
+    .btn-ghost:hover { background: var(--cream2); color: var(--black); }
+    .btn-danger {
+      background: var(--red2); color: var(--red);
+      border: 1px solid rgba(192,57,43,0.15);
+    }
+    .btn-danger:hover { background: #fbd5d5; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-icon { padding: 8px; width: 34px; height: 34px; justify-content: center; }
+
+    /* ── FORMS ─────────────────────────────────────── */
+    .form-group { margin-bottom: 18px; }
+    .form-label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: var(--gray); margin-bottom: 6px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .form-input, .form-select, .form-textarea {
+      width: 100%; padding: 10px 14px;
+      background: var(--cream);
+      border: 1.5px solid rgba(201,169,110,0.2);
+      border-radius: var(--r2);
+      font-family: 'Montserrat', sans-serif; font-size: 14px;
+      color: var(--black); transition: all 0.18s;
+      outline: none;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--gold);
+      background: var(--white);
+      box-shadow: 0 0 0 3px rgba(201,169,110,0.12);
+    }
+    .form-textarea { resize: vertical; min-height: 90px; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+    /* ── MODAL ─────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(17,17,16,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 200; display: flex;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--white);
+      border-radius: 20px;
+      border: 1px solid rgba(201,169,110,0.15);
+      width: 100%; max-width: 640px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 24px 80px rgba(17,17,16,0.25);
+    }
+    .modal-header {
+      padding: 24px 28px 0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 20px; font-weight: 700; color: var(--black);
+    }
+    .modal-close {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--cream2); border: none; cursor: pointer;
+      font-size: 16px; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .modal-close:hover { background: var(--cream); }
+    .modal-body { padding: 24px 28px 28px; }
+    .modal-footer {
+      padding: 0 28px 24px;
+      display: flex; gap: 10px; justify-content: flex-end;
+    }
+
+    /* ── ALERTS ────────────────────────────────────── */
+    .alert {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px 16px; border-radius: var(--r2);
+      font-size: 13px; margin-bottom: 12px;
+    }
+    .alert-red { background: var(--red2); color: #7f1d1d; border-left: 3px solid var(--red); }
+    .alert-amber { background: var(--amber2); color: #78350f; border-left: 3px solid var(--amber); }
+    .alert-green { background: var(--green2); color: #064e3b; border-left: 3px solid var(--green); }
+
+    /* ── VENCIMIENTO ITEM ──────────────────────────── */
+    .venc-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--cream2);
+    }
+    .venc-item:last-child { border-bottom: none; }
+    .venc-date-box {
+      width: 48px; height: 48px; border-radius: 10px;
+      background: var(--cream2); display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .venc-date-box .day { font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; line-height: 1; }
+    .venc-date-box .month { font-size: 9px; color: var(--gray); text-transform: uppercase; letter-spacing: 1px; font-family: 'JetBrains Mono', monospace; }
+    .venc-date-box.urgent { background: var(--red2); }
+    .venc-date-box.urgent .day { color: var(--red); }
+    .venc-date-box.soon { background: var(--amber2); }
+    .venc-date-box.soon .day { color: var(--amber); }
+    .venc-date-box.ok { background: var(--green2); }
+    .venc-date-box.ok .day { color: var(--green); }
+    .venc-info { flex: 1; min-width: 0; }
+    .venc-name { font-size: 14px; font-weight: 600; color: var(--black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .venc-client { font-size: 12px; color: var(--gray); }
+
+    /* ── TASK ITEM ─────────────────────────────────── */
+    .task-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--cream2);
+    }
+    .task-item:last-child { border-bottom: none; }
+    .task-check {
+      width: 18px; height: 18px; border-radius: 4px;
+      border: 2px solid rgba(201,169,110,0.4);
+      background: transparent; cursor: pointer;
+      flex-shrink: 0; margin-top: 2px; transition: all 0.15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .task-check.done { background: var(--gold); border-color: var(--gold); }
+    .task-check.done::after { content: '✓'; font-size: 11px; color: var(--black); font-weight: 700; }
+    .task-text { font-size: 13px; color: var(--black); flex: 1; }
+    .task-text.done { text-decoration: line-through; color: var(--gray2); }
+    .task-meta { font-size: 11px; color: var(--gray2); margin-top: 2px; }
+
+    /* ── NOTA ITEM ─────────────────────────────────── */
+    .nota-card {
+      background: var(--cream);
+      border: 1px solid rgba(201,169,110,0.15);
+      border-radius: 10px; padding: 16px;
+      margin-bottom: 12px; position: relative;
+    }
+    .nota-card::before {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; border-radius: 3px 0 0 3px;
+      background: var(--gold);
+    }
+    .nota-text { font-size: 14px; color: var(--black); line-height: 1.6; }
+    .nota-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+    .nota-date { font-size: 11px; color: var(--gray2); font-family: 'JetBrains Mono', monospace; }
+
+    /* ── CLIENT ROW ────────────────────────────────── */
+    .client-row { cursor: pointer; transition: background 0.15s; }
+    .client-row:hover { background: rgba(201,169,110,0.06) !important; }
+    .client-row.selected { background: rgba(201,169,110,0.1) !important; }
+    .client-row.selected td:first-child { border-left: 3px solid var(--gold); }
+
+    /* ── DETAIL PANEL ──────────────────────────────── */
+    .clients-layout { display: flex; gap: 20px; align-items: flex-start; }
+    .clients-list-col { flex: 1; min-width: 0; }
+    .detail-panel {
+      width: 360px; flex-shrink: 0;
+      background: var(--white);
+      border: 1px solid rgba(201,169,110,0.15);
+      border-radius: var(--r);
+      box-shadow: var(--shadow2);
+      position: sticky; top: 20px;
+      overflow: hidden;
+    }
+    .detail-panel-header {
+      background: linear-gradient(135deg, var(--black), var(--black2));
+      padding: 22px 20px;
+      display: flex; align-items: center; gap: 13px;
+    }
+    .detail-avatar-lg {
+      width: 48px; height: 48px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Montserrat', sans-serif; font-size: 19px; font-weight: 700;
+      color: var(--black); flex-shrink: 0;
+    }
+    .detail-name { font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; color: var(--gold2); line-height: 1.2; }
+    .detail-sub { font-size: 11px; color: rgba(250,248,243,0.5); margin-top: 3px; }
+    .detail-tabs { display: flex; border-bottom: 1px solid var(--cream2); }
+    .detail-tab {
+      flex: 1; padding: 11px 8px; text-align: center;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+      color: var(--gray); background: none; border-left: none; border-right: none; border-top: none;
+      font-family: 'Montserrat', sans-serif;
+    }
+    .detail-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .detail-body { padding: 18px 20px; max-height: 500px; overflow-y: auto; }
+    .detail-field { margin-bottom: 13px; }
+    .detail-field-label { font-size: 10px; color: var(--gray2); text-transform: uppercase; letter-spacing: 1.2px; font-family: 'JetBrains Mono', monospace; margin-bottom: 3px; }
+    .detail-field-val { font-size: 14px; color: var(--black); font-weight: 500; word-break: break-word; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+    .detail-actions { padding: 14px 20px; border-top: 1px solid var(--cream2); display: flex; gap: 8px; }
+
+    /* ── CLAVE CARD ────────────────────────────────── */
+    .clave-card {
+      background: var(--cream);
+      border: 1px solid rgba(201,169,110,0.2);
+      border-radius: 10px; padding: 14px; margin-bottom: 12px;
+    }
+    .clave-card-title {
+      font-size: 10px; font-weight: 700; color: var(--gold);
+      text-transform: uppercase; letter-spacing: 1.5px;
+      font-family: 'JetBrains Mono', monospace; margin-bottom: 10px;
+    }
+    .clave-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .clave-label-sm { font-size: 11px; color: var(--gray); width: 72px; flex-shrink: 0; }
+    .clave-val {
+      flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+      color: var(--black); background: var(--white);
+      border: 1px solid rgba(201,169,110,0.18); border-radius: 5px;
+      padding: 4px 8px; letter-spacing: 0.5px;
+    }
+    .clave-val.empty { color: var(--gray2); font-style: italic; font-family: 'Montserrat', sans-serif; font-size: 11px; letter-spacing: 0; }
+
+    /* ── CLIENT CARD (legacy - unused) ─────────────── */
+    .client-card {
+      background: var(--white);
+      border: 1px solid rgba(201,169,110,0.12);
+      border-radius: var(--r);
+      padding: 20px; cursor: pointer;
+      transition: all 0.2s; box-shadow: var(--shadow);
+    }
+    .client-card:hover { transform: translateY(-3px); box-shadow: var(--shadow2); border-color: rgba(201,169,110,0.3); }
+    .client-card-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
+    .client-avatar {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700;
+      color: var(--black); flex-shrink: 0;
+    }
+    .client-name { font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 600; color: var(--black); }
+    .client-type { font-size: 12px; color: var(--gray); margin-top: 2px; }
+    .client-stats { display: flex; gap: 16px; padding-top: 14px; border-top: 1px solid var(--cream2); }
+    .client-stat { text-align: center; flex: 1; }
+    .client-stat-val { font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; color: var(--black); }
+    .client-stat-label { font-size: 10px; color: var(--gray2); letter-spacing: 0.5px; }
+
+    /* ── DIVIDER ────────────────────────────────────── */
+    .divider { height: 1px; background: var(--cream2); margin: 20px 0; }
+
+    /* ── SEARCH ────────────────────────────────────── */
+    .search-wrap { position: relative; }
+    .search-wrap .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--gray2); }
+    .search-input {
+      width: 100%; padding: 10px 14px 10px 38px;
+      background: var(--cream); border: 1.5px solid rgba(201,169,110,0.18);
+      border-radius: var(--r2); font-family: 'Montserrat', sans-serif; font-size: 14px;
+      color: var(--black); outline: none; transition: all 0.18s;
+    }
+    .search-input:focus { border-color: var(--gold); background: var(--white); box-shadow: 0 0 0 3px rgba(201,169,110,0.1); }
+
+    /* ── TABS ──────────────────────────────────────── */
+    .tabs { display: flex; gap: 4px; background: var(--cream2); padding: 4px; border-radius: 10px; margin-bottom: 24px; }
+    .tab {
+      flex: 1; padding: 8px 16px; border-radius: 7px;
+      font-family: 'Montserrat', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none; background: transparent;
+      color: var(--gray); transition: all 0.18s; text-align: center;
+    }
+    .tab.active { background: var(--white); color: var(--black); box-shadow: 0 2px 8px rgba(17,17,16,0.08); }
+
+    /* ── EMPTY STATE ────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--gray2);
+    }
+    .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+    .empty-state p { font-size: 14px; max-width: 280px; margin: 0 auto; }
+
+    /* ── LOADING ────────────────────────────────────── */
+    .spinner {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 3px solid var(--cream2);
+      border-top-color: var(--gold);
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── RESPONSIVE ────────────────────────────────── */
+    @media (max-width: 1200px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 900px) {
+      :root { --sidebar: 0px; }
+      .sidebar { display: none; }
+      .main { padding: 20px; }
+      .grid-2, .grid-6040 { grid-template-columns: 1fr; }
+    }
+
+
+    /* ── SIDEBAR COLLAPSIBLE ───────────────────────── */
+    :root { --sidebar-collapsed: 64px; }
+    .sidebar { transition: width 0.25s cubic-bezier(.4,0,.2,1); overflow: hidden; }
+    .sidebar.collapsed { width: var(--sidebar-collapsed) !important; }
+    .sidebar.collapsed .sidebar-brand,
+    .sidebar.collapsed .sidebar-brand-sub,
+    .sidebar.collapsed .nav-section-label,
+    .sidebar.collapsed .nav-label,
+    .sidebar.collapsed .nav-badge,
+    .sidebar.collapsed .user-info,
+    .sidebar.collapsed .btn-logout { display: none !important; }
+    .sidebar.collapsed .sidebar-header { padding: 18px 13px; }
+    .sidebar.collapsed .nav-item { justify-content: center; padding: 11px 0; }
+    .sidebar.collapsed .nav-icon { font-size: 20px; }
+    .sidebar.collapsed .sidebar-user { justify-content: center; padding: 16px 10px; }
+    .sidebar-toggle {
+      position: absolute; right: -14px; top: 22px;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--gold); border: 2px solid var(--cream);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 11px; z-index: 200;
+      box-shadow: 0 2px 8px rgba(17,17,16,0.18);
+      transition: all 0.2s; color: var(--black); font-weight: 700;
+      user-select: none;
+    }
+    .sidebar-toggle:hover { background: var(--gold2); transform: scale(1.1); }
+    .main { transition: margin-left 0.25s cubic-bezier(.4,0,.2,1); }
+    .main.collapsed { margin-left: 10px !important; }
+    .client-row { cursor: pointer; transition: background 0.15s; }
+    .client-row:hover td { background: rgba(201,169,110,0.05); }
+    .sidebar.collapsed .nav-item { position: relative; }
+    .sidebar.collapsed .nav-item::after {
+      content: attr(data-tooltip);
+      position: absolute; left: calc(100% + 12px); top: 50%;
+      transform: translateY(-50%);
+      background: var(--black2); color: var(--gold3);
+      padding: 5px 10px; border-radius: 6px; font-size: 12px;
+      white-space: nowrap; pointer-events: none; opacity: 0;
+      transition: opacity 0.15s; font-family: 'Montserrat', sans-serif;
+      border: 1px solid rgba(201,169,110,0.2); z-index: 999;
+    }
+    .sidebar.collapsed .nav-item:hover::after { opacity: 1; }
+
+    /* ── HIGHLIGHT ROW ──────────────────────────────── */
+    .highlight-row { background: rgba(201,169,110,0.06) !important; }
+
+    /* ── CALENDAR ───────────────────────────────────── */
+    .cal-day:hover { background: rgba(201,169,110,0.1) !important; }
+
+    /* ── QUICK ADD ──────────────────────────────────── */
+    .quick-add-bar {
+      display: flex; gap: 10px; align-items: center;
+      padding: 14px 16px;
+      background: var(--cream);
+      border: 1.5px dashed rgba(201,169,110,0.3);
+      border-radius: var(--r2); margin-bottom: 16px;
+    }
+    .quick-add-bar input {
+      flex: 1; padding: 8px 12px;
+      background: transparent; border: none; outline: none;
+      font-family: 'Montserrat', sans-serif; font-size: 14px; color: var(--black);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── HELPERS ─────────────────────────────────────────
+const fmt = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
+const fmtShort = (n) => {
+  if (n >= 1000000) return `$${(n/1000000).toFixed(1)}M`;
+  if (n >= 1000) return `$${(n/1000).toFixed(0)}K`;
+  return fmt(n);
+};
+const today = new Date();
+const todayStr = today.toISOString().split('T')[0];
+
+const MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MONTHS_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+const fmtDate = (d) => {
+  if (!d) return '-';
+  const dt = new Date(d + 'T12:00:00');
+  return `${dt.getDate()} ${MONTHS_ES[dt.getMonth()]} ${dt.getFullYear()}`;
+};
+
+const daysUntil = (dateStr) => {
+  const d = new Date(dateStr + 'T12:00:00');
+  const diff = Math.ceil((d - today) / (1000*60*60*24));
+  return diff;
+};
+
+const urgencyClass = (days) => {
+  if (days < 0) return 'urgent';
+  if (days <= 7) return 'urgent';
+  if (days <= 15) return 'soon';
+  return 'ok';
+};
+
+const initials = (name) => {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+};
+
+// ── FIREBASE ACCESS ──────────────────────────────────
+const FB = () => window.__FB__;
+
+// ── MOCK DATA ────────────────────────────────────────
+const MOCK_CLIENTS = [
+  {
+    id: 'mock-1', nombre: 'TechSolutions S.R.L.', tipo: 'empresa',
+    cuit: '30-71234567-8', email: 'admin@techsolutions.com.ar',
+    telefono: '+54 11 4521-8890', responsable: 'Lucas Martínez',
+    servicio: 'Pack Integral (Fiscal+Laboral)',
+    honorario: 450000, estado: 'activo',
+    domicilio: 'Av. Corrientes 1550, CABA', empleados: 12,
+    desde: '2024-03-01', notas: 'Cliente premium. Paga puntual. 12 empleados en planilla.',
+    ultimoPago: '2026-03-01', saldoPendiente: 0,
+    claves: { arca_usuario:'30-71234567-8', arca_clave:'TechAFIP2026', arba_usuario:'techsolutions', arba_clave:'ArbaPass01', muni_usuario:'', muni_clave:'' }
+  },
+  {
+    id: 'mock-2', nombre: 'Valentina Rodríguez', tipo: 'persona_fisica',
+    cuit: '27-35678912-4', email: 'vale.rodriguez@gmail.com',
+    telefono: '+54 221 555-2341', responsable: '',
+    servicio: 'Asesoría Fiscal (Personas)',
+    honorario: 195000, estado: 'activo',
+    domicilio: 'Calle 47 N° 820, La Plata', empleados: 0,
+    desde: '2025-01-15', notas: 'Psicóloga. Consulta de consultorio privado. Ingresos variables.',
+    ultimoPago: '2026-02-15', saldoPendiente: 195000,
+    claves: { arca_usuario:'27-35678912-4', arca_clave:'Vale2026!', arba_usuario:'', arba_clave:'', muni_usuario:'', muni_clave:'' }
+  },
+  {
+    id: 'mock-3', nombre: 'Diego Fernández', tipo: 'monotributista',
+    cuit: '20-28456789-0', email: 'diegof.dev@gmail.com',
+    telefono: '+54 221 554-9821', responsable: '',
+    servicio: 'Contabilidad Básica',
+    honorario: 155000, estado: 'activo',
+    domicilio: 'Calle 13 N° 430, La Plata', empleados: 0,
+    desde: '2025-06-01', notas: 'Desarrollador web freelance. Categoría F monotributo. Posible recategorización en junio.',
+    ultimoPago: '2026-03-01', saldoPendiente: 0,
+    claves: { arca_usuario:'20-28456789-0', arca_clave:'DiegoMono26', arba_usuario:'', arba_clave:'', muni_usuario:'', muni_clave:'' }
+  }
+];
+
+const CALENDARIO_2026 = [
+  // MARZO 2026
+  { id:'cal-m1', nombre:'Sueldos y Cargas Sociales (Mar)',         tipo:'laboral', fecha:'2026-03-10', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-m2', nombre:'IIBB Mensual - TechSolutions (Mar)',      tipo:'fiscal',  fecha:'2026-03-16', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-m3', nombre:'IVA Mensual - TechSolutions (Mar)',       tipo:'fiscal',  fecha:'2026-03-18', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-m4', nombre:'Monotributo Mensual - Diego (Mar)',       tipo:'fiscal',  fecha:'2026-03-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
+  { id:'cal-m5', nombre:'Monotributo Mensual - Valentina (Mar)',   tipo:'fiscal',  fecha:'2026-03-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
+  // ABRIL 2026
+  { id:'cal-1',  nombre:'Sueldos y Cargas Sociales (Abr)',         tipo:'laboral', fecha:'2026-04-10', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-5',  nombre:'IIBB Mensual - TechSolutions (Abr)',      tipo:'fiscal',  fecha:'2026-04-15', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-3',  nombre:'IVA Mensual - TechSolutions (Abr)',       tipo:'fiscal',  fecha:'2026-04-18', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-4',  nombre:'Monotributo Mensual - Diego (Abr)',       tipo:'fiscal',  fecha:'2026-04-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
+  { id:'cal-8',  nombre:'Monotributo Mensual - Valentina (Abr)',   tipo:'fiscal',  fecha:'2026-04-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
+  // MAYO 2026
+  { id:'cal-may1',nombre:'Sueldos y Cargas Sociales (May)',        tipo:'laboral', fecha:'2026-05-11', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-may2',nombre:'IIBB Mensual - TechSolutions (May)',     tipo:'fiscal',  fecha:'2026-05-15', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-9',  nombre:'IVA Mensual - TechSolutions (May)',       tipo:'fiscal',  fecha:'2026-05-18', clientes:'TechSolutions S.R.L.',     prioridad:'alta',  completado:false },
+  { id:'cal-10', nombre:'Monotributo Mensual - Diego (May)',       tipo:'fiscal',  fecha:'2026-05-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
+  { id:'cal-may3',nombre:'Monotributo Mensual - Valentina (May)',  tipo:'fiscal',  fecha:'2026-05-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
+  // JUNIO 2026
+  { id:'cal-6',  nombre:'Bienes Personales / Ganancias PF',        tipo:'fiscal',  fecha:'2026-06-16', clientes:'Valentina Rodríguez',      prioridad:'alta',  completado:false },
+  { id:'cal-2',  nombre:'Ganancias Personas Físicas 4ta Cat.',     tipo:'fiscal',  fecha:'2026-06-16', clientes:'Valentina Rodríguez',      prioridad:'alta',  completado:false },
+  { id:'cal-jun1',nombre:'Monotributo Mensual - Diego (Jun)',      tipo:'fiscal',  fecha:'2026-06-20', clientes:'Diego Fernández',          prioridad:'media', completado:false },
+  { id:'cal-jun2',nombre:'Monotributo Mensual - Valentina (Jun)',  tipo:'fiscal',  fecha:'2026-06-20', clientes:'Valentina Rodríguez',      prioridad:'media', completado:false },
+  { id:'cal-jun3',nombre:'Recategorización Semestral Monotributo', tipo:'fiscal',  fecha:'2026-06-20', clientes:'Todos los monotributistas',prioridad:'alta',  completado:false },
+];
+
+// ── GOOGLE ICON ──────────────────────────────────────
+const GoogleIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>
+);
+
+// ── LOGIN COMPONENT ──────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleGoogleLogin = async () => {
+    setLoading(true); setError('');
+    const fb = FB();
+    try {
+      const provider = new fb.GoogleAuthProvider();
+      await fb.signInWithPopup(fb.auth, provider);
+    } catch (e) {
+      setError('Error al iniciar sesión. Verificá las credenciales de Firebase.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-grid" />
+      <div className="login-card">
+        <div className="login-logo">AP</div>
+        <div className="login-title">Aragón Paz</div>
+        <div className="login-sub">Estudio Contable · Sistema de Gestión</div>
+        {error && <div className="alert alert-red" style={{marginBottom:20, textAlign:'left'}}><span>⚠️</span>{error}</div>}
+        <button className="btn-google" onClick={handleGoogleLogin} disabled={loading}>
+          {loading ? <div className="spinner" style={{width:20,height:20,borderWidth:2}} /> : <GoogleIcon />}
+          {loading ? 'Conectando...' : 'Ingresar con Google'}
+        </button>
+        <div className="login-footer">
+          Acceso restringido · Solo cuentas autorizadas
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MODAL WRAPPER ────────────────────────────────────
+function Modal({ title, onClose, children, footer }) {
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <div className="modal-title">{title}</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-footer">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── DASHBOARD ────────────────────────────────────────
+function Dashboard({ clients, vencimientos, tareas, notas }) {
+  const activeClients = clients.filter(c => c.estado === 'activo');
+  const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
+  const pendientesHoy = vencimientos
+    .filter(v => !v.completado)
+    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
+    .slice(0, 6);
+  const tareasP = tareas.filter(t => !t.completado).slice(0, 5);
+  const saldosPendientes = clients.reduce((s, c) => s + (c.saldoPendiente || 0), 0);
+  const vencUrgentes = vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 7).length;
+
+  const now = new Date();
+  const dateDisplay = `${now.getDate()} de ${MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`;
+  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const dayName = days[now.getDay()];
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Buenos días ☀️</div>
+          <div className="page-subtitle">{dayName}, {dateDisplay} · Todo listo para arrancar</div>
+        </div>
+        <div className="page-date">
+          <div style={{fontWeight:700, color:'var(--black)', fontSize:14}}>{activeClients.length} clientes activos</div>
+          <div>Sistema actualizado</div>
+        </div>
+      </div>
+
+      {vencUrgentes > 0 && (
+        <div className="alert alert-red" style={{marginBottom:20}}>
+          <span>🚨</span>
+          <span><strong>{vencUrgentes} vencimiento{vencUrgentes > 1 ? 's' : ''}</strong> en los próximos 7 días. Revisá la sección de vencimientos.</span>
+        </div>
+      )}
+
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">👥</div>
+          <div className="stat-label">Clientes Activos</div>
+          <div className="stat-value">{activeClients.length}</div>
+          <div className="stat-delta">De un total de {clients.length} registrados</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">💰</div>
+          <div className="stat-label">Ingresos Mensuales</div>
+          <div className="stat-value gold">{fmtShort(totalMensual)}</div>
+          <div className="stat-delta up">Facturación recurrente</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">📅</div>
+          <div className="stat-label">Vencimientos Próximos</div>
+          <div className="stat-value" style={{color: vencUrgentes > 0 ? 'var(--red)' : 'var(--black)'}}>
+            {vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 30).length}
+          </div>
+          <div className="stat-delta" style={{color: vencUrgentes > 0 ? 'var(--red)' : ''}}>
+            {vencUrgentes > 0 ? `${vencUrgentes} urgentes` : 'En los próximos 30 días'}
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">⏳</div>
+          <div className="stat-label">Saldos Pendientes</div>
+          <div className="stat-value" style={{color: saldosPendientes > 0 ? 'var(--amber)' : 'var(--green)'}}>
+            {fmtShort(saldosPendientes)}
+          </div>
+          <div className="stat-delta" style={{color: saldosPendientes > 0 ? 'var(--amber)' : 'var(--green)'}}>
+            {saldosPendientes > 0 ? 'A cobrar' : 'Todo al día ✓'}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid-6040" style={{marginBottom:24}}>
+        {/* VENCIMIENTOS */}
+        <div className="card">
+          <div className="card-title"><span>📅</span> Próximos Vencimientos</div>
+          {pendientesHoy.length === 0
+            ? <div className="empty-state"><div className="empty-icon">🎉</div><p>Sin vencimientos próximos</p></div>
+            : pendientesHoy.map(v => {
+              const days = daysUntil(v.fecha);
+              const uc = urgencyClass(days);
+              const d = new Date(v.fecha + 'T12:00:00');
+              return (
+                <div className="venc-item" key={v.id}>
+                  <div className={`venc-date-box ${uc}`}>
+                    <div className="day">{d.getDate()}</div>
+                    <div className="month">{MONTHS_ES[d.getMonth()]}</div>
+                  </div>
+                  <div className="venc-info">
+                    <div className="venc-name">{v.nombre}</div>
+                    <div className="venc-client">
+                      {v.clientes} · {days < 0 ? <span style={{color:'var(--red)', fontWeight:600}}>Vencido</span> : days === 0 ? <span style={{color:'var(--red)', fontWeight:600}}>HOY</span> : `${days}d`}
+                    </div>
+                  </div>
+                  <span className={`badge badge-${uc === 'urgent' ? 'red' : uc === 'soon' ? 'amber' : 'green'}`}>
+                    {uc === 'urgent' ? '🚨 Urgente' : uc === 'soon' ? '⚠️ Pronto' : '✓ OK'}
+                  </span>
+                </div>
+              );
+            })
+          }
+        </div>
+
+        {/* TAREAS */}
+        <div className="card">
+          <div className="card-title"><span>✅</span> Pendientes del Día</div>
+          {tareasP.length === 0
+            ? <div className="empty-state"><div className="empty-icon">✨</div><p>Todo al día</p></div>
+            : tareasP.map(t => (
+              <div className="task-item" key={t.id}>
+                <div className={`task-check ${t.completado ? 'done' : ''}`} />
+                <div>
+                  <div className={`task-text ${t.completado ? 'done' : ''}`}>{t.texto}</div>
+                  {t.cliente && <div className="task-meta">📁 {t.cliente}</div>}
+                </div>
+              </div>
+            ))
+          }
+          {tareas.filter(t => !t.completado).length > 5 && (
+            <div style={{marginTop:8, fontSize:12, color:'var(--gray)'}}>+ {tareas.filter(t => !t.completado).length - 5} más pendientes</div>
+          )}
+        </div>
+      </div>
+
+      {/* CLIENTES RESUMEN */}
+      <div className="card" style={{marginBottom:24}}>
+        <div className="card-title"><span>👥</span> Resumen de Clientes</div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Tipo</th>
+                <th>Servicio</th>
+                <th>Honorario</th>
+                <th>Saldo Pendiente</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clients.slice(0,6).map(c => (
+                <tr key={c.id}>
+                  <td style={{fontWeight:600}}>{c.nombre}</td>
+                  <td>
+                    <span className={`badge ${c.tipo === 'empresa' ? 'badge-blue' : c.tipo === 'monotributista' ? 'badge-gold' : 'badge-gray'}`}>
+                      {c.tipo === 'empresa' ? '🏢 Empresa' : c.tipo === 'monotributista' ? '📋 Monotributo' : '👤 Persona'}
+                    </span>
+                  </td>
+                  <td style={{fontSize:13}}>{c.servicio}</td>
+                  <td style={{fontFamily:'JetBrains Mono, monospace', fontSize:13}}>{fmt(c.honorario)}</td>
+                  <td>
+                    {c.saldoPendiente > 0
+                      ? <span style={{color:'var(--amber)', fontWeight:600, fontFamily:'JetBrains Mono, monospace', fontSize:13}}>{fmt(c.saldoPendiente)}</span>
+                      : <span className="badge badge-green">Al día</span>
+                    }
+                  </td>
+                  <td><span className={`badge ${c.estado === 'activo' ? 'badge-green' : 'badge-red'}`}>{c.estado}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* NOTAS RECIENTES */}
+      {notas.length > 0 && (
+        <div className="card">
+          <div className="card-title"><span>📝</span> Notas Recientes</div>
+          <div className="grid-2">
+            {notas.slice(0,2).map(n => (
+              <div className="nota-card" key={n.id}>
+                <div className="nota-text">{n.texto}</div>
+                <div className="nota-meta">
+                  <div className="nota-date">{fmtDate(n.fecha)}</div>
+                  {n.cliente && <span className="badge badge-gray">{n.cliente}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TRIBUTOS SEED (seeds Firebase collection on first load) ───────────
+const TRIBUTOS_SEED = [
+  { id:'iva',        label:'IVA Mensual',                categoria:'Nacional',  organismo:'ARCA',     periodicidad:'mensual',  dia:18 },
+  { id:'monotributo',label:'Monotributo Mensual',        categoria:'Nacional',  organismo:'ARCA',     periodicidad:'mensual',  dia:20 },
+  { id:'ganancias',  label:'Ganancias Personas Físicas', categoria:'Nacional',  organismo:'ARCA',     periodicidad:'anual',    dia:null },
+  { id:'bienes_pers',label:'Bienes Personales',          categoria:'Nacional',  organismo:'ARCA',     periodicidad:'anual',    dia:null },
+  { id:'f931',       label:'F.931 - Empleadores',        categoria:'Nacional',  organismo:'ARCA',     periodicidad:'mensual',  dia:10 },
+  { id:'recat_mono', label:'Recategorización Monotributo',categoria:'Nacional', organismo:'ARCA',     periodicidad:'semestral',dia:20 },
+  { id:'iibb',       label:'IIBB Mensual',               categoria:'Provincial',organismo:'ARBA',     periodicidad:'mensual',  dia:16 },
+  { id:'iibb_cm',    label:'IIBB Convenio Multilateral', categoria:'Provincial',organismo:'ARBA',     periodicidad:'mensual',  dia:22 },
+  { id:'iibb_anual', label:'IIBB Declaración Anual',    categoria:'Provincial',organismo:'ARBA',     periodicidad:'anual',    dia:null },
+  { id:'imp_sellos', label:'Impuesto de Sellos',         categoria:'Provincial',organismo:'ARBA',     periodicidad:'variable', dia:null },
+  { id:'imp_inmob',  label:'Impuesto Inmobiliario',      categoria:'Provincial',organismo:'ARBA',     periodicidad:'cuotas',   dia:null },
+  { id:'automotores',label:'Patente / Automotores',      categoria:'Provincial',organismo:'ARBA',     periodicidad:'cuotas',   dia:null },
+  { id:'tasas_muni', label:'Tasas Municipales',          categoria:'Municipal', organismo:'Municipal',periodicidad:'bimestral',dia:null },
+  { id:'sueldos',    label:'Sueldos y Cargas Sociales',  categoria:'Laboral',   organismo:'ARCA',     periodicidad:'mensual',  dia:10 },
+  { id:'art',        label:'ART (Seg. de Riesgos)',      categoria:'Laboral',   organismo:'ART',      periodicidad:'mensual',  dia:15 },
+  { id:'soc_anual',  label:'Balance / Estados Contables',categoria:'Societario',organismo:'IGJ/DPPJ', periodicidad:'anual',   dia:null },
+];
+const TRIBUTO_CATEGORIAS  = ['Nacional','Provincial','Municipal','Laboral','Societario','Otro'];
+const TRIBUTO_ORGANISMOS  = ['ARCA','ARBA','Municipal','ART','IGJ/DPPJ','Justicia','Otro'];
+const TRIBUTO_PERIODICIDADES = ['mensual','bimestral','cuatrimestral','semestral','anual','cuotas','variable'];
+
+// ── CLIENTES ─────────────────────────────────────────
+function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo }) {
+  const [search, setSearch]       = useState('');
+  const [view, setView]           = useState('list');
+  const [selected, setSelected]   = useState(null);
+  const [detailTab, setDetailTab] = useState('info');
+  const [form, setForm]           = useState({});
+  const [formTab, setFormTab]     = useState('datos');
+  const [filter, setFilter]       = useState('todos');
+  const [saving, setSaving]       = useState(false);
+  const [cuitError, setCuitError] = useState('');
+  const [showPass, setShowPass]   = useState({});
+  const [showCatalogo, setShowCatalogo] = useState(false);
+
+  const filtered = clients.filter(c => {
+    const q = search.toLowerCase();
+    const matchSearch =
+      (c.nombre||'').toLowerCase().includes(q) ||
+      (c.email||'').toLowerCase().includes(q) ||
+      (c.cuit||'').replace(/\D/g,'').includes(q.replace(/\D/g,''));
+    const matchFilter =
+      filter === 'todos' ? true :
+      filter === 'inactivo' ? c.estado === 'inactivo' :
+      filter === 'prospecto' ? c.estado === 'prospecto' :
+      c.tipo === filter;
+    return matchSearch && matchFilter;
+  });
+
+  const handleCuitChange = (val) => {
+    const digits = val.replace(/\D/g, '').slice(0, 11);
+    let formatted = digits;
+    if (digits.length > 2)  formatted = digits.slice(0,2) + '-' + digits.slice(2);
+    if (digits.length > 10) formatted = digits.slice(0,2) + '-' + digits.slice(2,10) + '-' + digits.slice(10);
+    setForm(f => ({...f, cuit: formatted, claves: {...(f.claves||{}), arca_usuario: formatted}}));
+    if (digits.length > 0 && digits.length < 11) setCuitError('El CUIT debe tener 11 dígitos');
+    else setCuitError('');
+  };
+
+  const openNew = () => {
+    setForm({ tipo:'persona_fisica', estado:'activo', honorario:'', saldoPendiente:0, tributos:[],
+      claves:{ arca_usuario:'', arca_clave:'', arba_clave:'', muni_clave:'' }
+    });
+    setFormTab('datos'); setCuitError(''); setShowPass({}); setView('new');
+  };
+  const openEdit = (c) => {
+    setSelected(c);
+    setForm({ ...c, tributos: c.tributos||[],
+      claves:{ arca_usuario: c.claves?.arca_usuario || c.cuit||'',
+               arca_clave:   c.claves?.arca_clave||'',
+               arba_clave:   c.claves?.arba_clave||'',
+               muni_clave:   c.claves?.muni_clave||'' }
+    });
+    setFormTab('datos'); setCuitError(''); setShowPass({}); setView('edit');
+  };
+  const openDetail = (c) => { setSelected(c); setDetailTab('info'); setView('detail'); };
+  const backToList = () => setView('list');
+
+  // auto-generate vencimientos for new client based on assigned tributos
+  const generateVencimientosForClient = async (client, tributos) => {
+    if (!tributos || !tributos.length) return [];
+    const now = new Date();
+    const generated = [];
+    // generate for current month + next 5 months
+    for (let m = 0; m < 6; m++) {
+      const yr  = now.getMonth() + m > 11 ? now.getFullYear() + 1 : now.getFullYear();
+      const mon = (now.getMonth() + m) % 12;
+      tributos.forEach(t => {
+        const per = t.periodicidad || 'mensual';
+        if (per !== 'mensual' && per !== 'bimestral') return; // only recurring
+        if (per === 'bimestral' && m % 2 !== 0) return;
+        const day = t.dia || 20;
+        const maxDay = new Date(yr, mon+1, 0).getDate();
+        const d = Math.min(day, maxDay);
+        const fecha = `${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const venc = {
+          nombre: `${t.label} - ${client.nombre}`,
+          tipo: ['Laboral'].includes(t.categoria) ? 'laboral' : 'fiscal',
+          fecha, clientes: client.nombre, prioridad: 'media', completado: false,
+          autoGenerado: true, clienteId: client.id, tributoId: t.id,
+        };
+        generated.push(venc);
+      });
+    }
+    // save to firebase + state
+    const saved = [];
+    for (const v of generated) {
+      try {
+        const ref = await FB().addDoc(FB().collection(FB().db,'vencimientos'), {...v, createdAt: FB().serverTimestamp()});
+        saved.push({...v, id: ref.id});
+      } catch(e) {
+        saved.push({...v, id: 'local-'+Date.now()+Math.random()});
+      }
+    }
+    return saved;
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre || cuitError) return;
+    setSaving(true);
+    const payload = {
+      nombre: form.nombre||'', tipo: form.tipo||'persona_fisica',
+      cuit: form.cuit||'', email: form.email||'', telefono: form.telefono||'',
+      responsable: form.responsable||'', domicilio: form.domicilio||'',
+      servicio: form.servicio||'', honorario: Number(form.honorario||0),
+      saldoPendiente: Number(form.saldoPendiente||0), estado: form.estado||'activo',
+      desde: form.desde||'', empleados: Number(form.empleados||0), notas: form.notas||'',
+      tributos: form.tributos||[],
+      claves: {
+        arca_usuario: form.claves?.arca_usuario||form.cuit||'',
+        arca_clave:   form.claves?.arca_clave||'',
+        arba_clave:   form.claves?.arba_clave||'',
+        muni_clave:   form.claves?.muni_clave||'',
+      }
+    };
+    let savedClient;
+    try {
+      const fb = FB();
+      if (view === 'new') {
+        const docRef = await fb.addDoc(fb.collection(fb.db,'clients'), {...payload, createdAt: fb.serverTimestamp()});
+        savedClient = {...payload, id: docRef.id};
+        setClients(prev => [...prev, savedClient]);
+      } else {
+        await fb.updateDoc(fb.doc(fb.db,'clients',selected.id), payload);
+        savedClient = {...payload, id: selected.id};
+        setClients(prev => prev.map(c => c.id===selected.id ? savedClient : c));
+      }
+    } catch(e) {
+      if (view === 'new') {
+        savedClient = {...payload, id:'local-'+Date.now()};
+        setClients(prev => [...prev, savedClient]);
+      } else {
+        savedClient = {...payload, id: selected.id};
+        setClients(prev => prev.map(c => c.id===selected.id ? savedClient : c));
+      }
+    }
+    // auto-generate vencimientos for NEW clients with assigned tributos
+    if (view === 'new' && (form.tributos||[]).length > 0) {
+      const newVenc = await generateVencimientosForClient(savedClient, form.tributos);
+      if (newVenc.length > 0) setVencimientos(prev => [...prev, ...newVenc]);
+    }
+    setSelected(savedClient);
+    setSaving(false); setView('detail');
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este cliente?')) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'clients',id)); } catch(e) {}
+    setClients(prev => prev.filter(c => c.id !== id));
+    setSelected(null); setView('list');
+  };
+
+  const toggleTributo = (tid) => {
+    setForm(f => {
+      const current = f.tributos||[];
+      const exists = current.find(t=>t.id===tid);
+      if (exists) return {...f, tributos: current.filter(t=>t.id!==tid)};
+      const trib = tributosCatalogo.find(t=>t.id===tid);
+      if (!trib) return f;
+      return {...f, tributos: [...current, {...trib}]};
+    });
+  };
+  const togglePass = (key) => setShowPass(p=>({...p,[key]:!p[key]}));
+
+  const CAT_ICON = { Nacional:'🏛️', Provincial:'🏠', Municipal:'🏙️', Laboral:'👷', Societario:'📂', Otro:'📋' };
+
+  // ── FORM VIEW ───────────────────────────────────────
+  const renderForm = () => (
+    <div>
+      <div className="page-header">
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button className="btn btn-ghost btn-sm" onClick={backToList}>← Volver</button>
+          <div>
+            <div className="page-title">{view==='new'?'Nuevo Cliente':`Editar: ${selected?.nombre}`}</div>
+            <div className="page-subtitle">Completá los datos del cliente</div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn btn-ghost" onClick={backToList}>Cancelar</button>
+          <button className="btn btn-gold" onClick={handleSave} disabled={saving}>
+            {saving?'⏳ Guardando...':'✓ Guardar Cliente'}
+          </button>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:24,width:'fit-content'}}>
+        {[['datos','📋 Datos'],['tributos','📊 Tributos'],['claves','🔑 Claves']].map(([t,l])=>(
+          <button key={t} className={`tab ${formTab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setFormTab(t)}>{l}</button>
+        ))}
+      </div>
+      <div className="card">
+        {formTab==='datos' && (
+          <div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Nombre / Razón Social *</label>
+                <input className="form-input" value={form.nombre||''} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Juan García / TechSolutions S.R.L." autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tipo de Cliente</label>
+                <select className="form-select" value={form.tipo||'persona_fisica'} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+                  <option value="persona_fisica">👤 Persona Física</option>
+                  <option value="monotributista">📋 Monotributista</option>
+                  <option value="empresa">🏢 Empresa / S.R.L.</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">CUIT</label>
+                <input className="form-input" value={form.cuit||''} onChange={e=>handleCuitChange(e.target.value)}
+                  placeholder="20-12345678-9" inputMode="numeric" style={{borderColor:cuitError?'var(--red)':''}} />
+                {cuitError && <div style={{fontSize:11,color:'var(--red)',marginTop:4}}>{cuitError}</div>}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Estado</label>
+                <select className="form-select" value={form.estado||'activo'} onChange={e=>setForm(f=>({...f,estado:e.target.value}))}>
+                  <option value="activo">✅ Activo</option>
+                  <option value="prospecto">🔎 Prospecto</option>
+                  <option value="inactivo">⛔ Inactivo</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input className="form-input" type="email" value={form.email||''} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="cliente@email.com" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Teléfono</label>
+                <input className="form-input" value={form.telefono||''} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="+54 221 555-0000" />
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Responsable de Contacto</label>
+                <input className="form-input" value={form.responsable||''} onChange={e=>setForm(f=>({...f,responsable:e.target.value}))} placeholder="Para empresas" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Domicilio</label>
+                <input className="form-input" value={form.domicilio||''} onChange={e=>setForm(f=>({...f,domicilio:e.target.value}))} placeholder="Calle 47 N° 820, La Plata" />
+              </div>
+            </div>
+            <div className="form-grid-3">
+              <div className="form-group">
+                <label className="form-label">Servicio Contratado</label>
+                <select className="form-select" value={form.servicio||''} onChange={e=>setForm(f=>({...f,servicio:e.target.value}))}>
+                  <option value="">Seleccionar...</option>
+                  <option>Asesoría Fiscal (Personas)</option>
+                  <option>Contabilidad Básica</option>
+                  <option>Pack Integral (Fiscal+Laboral)</option>
+                  <option>Presentaciones Impositivas</option>
+                  <option>Consultoría Premium</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Honorario Mensual (ARS)</label>
+                <input className="form-input" type="number" value={form.honorario||''} onChange={e=>setForm(f=>({...f,honorario:e.target.value}))} placeholder="195000" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">N° Empleados</label>
+                <input className="form-input" type="number" value={form.empleados||0} onChange={e=>setForm(f=>({...f,empleados:e.target.value}))} min="0" />
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Cliente Desde</label>
+                <input className="form-input" type="date" value={form.desde||''} onChange={e=>setForm(f=>({...f,desde:e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Saldo Pendiente (ARS)</label>
+                <input className="form-input" type="number" value={form.saldoPendiente||0} onChange={e=>setForm(f=>({...f,saldoPendiente:e.target.value}))} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Notas</label>
+              <textarea className="form-textarea" value={form.notas||''} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Observaciones..." />
+            </div>
+          </div>
+        )}
+        {formTab==='tributos' && (
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <p style={{fontSize:13,color:'var(--gray)'}}>Seleccioná los tributos que aplican. Al guardar se generarán los vencimientos automáticamente.</p>
+              <button className="btn btn-ghost btn-sm" style={{fontSize:12,flexShrink:0}} onClick={()=>setShowCatalogo(true)}>⚙️ Gestionar catálogo</button>
+            </div>
+            {TRIBUTO_CATEGORIAS.map(cat => {
+              const items = tributosCatalogo.filter(t=>(t.categoria||'Otro')===cat);
+              if (!items.length) return null;
+              return (
+                <div key={cat} style={{marginBottom:22}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--gold)',textTransform:'uppercase',letterSpacing:'1.5px',fontFamily:'JetBrains Mono,monospace',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
+                    <span>{CAT_ICON[cat]||'📋'}</span> {cat}
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:7}}>
+                    {items.map(t => {
+                      const active = (form.tributos||[]).find(x=>x.id===t.id);
+                      return (
+                        <div key={t.id} onClick={()=>toggleTributo(t.id)}
+                          style={{display:'flex',alignItems:'center',gap:10,padding:'9px 13px',borderRadius:'var(--r2)',cursor:'pointer',transition:'all 0.15s',
+                            background:active?'rgba(201,169,110,0.12)':'var(--cream)',border:active?'1.5px solid var(--gold)':'1.5px solid transparent'}}>
+                          <div style={{width:17,height:17,borderRadius:4,flexShrink:0,background:active?'var(--gold)':'transparent',border:active?'2px solid var(--gold)':'2px solid rgba(201,169,110,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'var(--black)',fontWeight:700}}>
+                            {active?'✓':''}
+                          </div>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:active?600:400,color:'var(--black)'}}>{t.label}</div>
+                            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{t.organismo}{t.dia?' · día '+t.dia:''}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            {(form.tributos||[]).length>0 && (
+              <div style={{marginTop:12,padding:'10px 14px',background:'var(--green2)',borderRadius:'var(--r2)',fontSize:13,color:'#065f46',borderLeft:'3px solid var(--green)'}}>
+                ✓ {(form.tributos||[]).length} tributo{(form.tributos||[]).length>1?'s':''} seleccionado{(form.tributos||[]).length>1?'s':''}
+                {view==='new'?' — se generarán vencimientos automáticamente al guardar':''}
+              </div>
+            )}
+          </div>
+        )}
+        {formTab==='claves' && (
+          <div>
+            <div style={{padding:'10px 14px',background:'var(--amber2)',borderRadius:'var(--r2)',marginBottom:20,fontSize:13,color:'#78350f',borderLeft:'3px solid var(--amber)'}}>
+              🔐 <strong>Información sensible.</strong> Guardada en tu base de datos privada de Firebase.
+            </div>
+            {/* ARCA — with CUIT/usuario */}
+            <div className="clave-card" style={{marginBottom:14}}>
+              <div className="clave-card-title">🏛️ ARCA (Ex-AFIP)</div>
+              <div className="form-grid-2">
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="form-label">CUIT / Usuario</label>
+                  <input className="form-input" value={form.claves?.arca_usuario||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,arca_usuario:e.target.value}}))} placeholder="CUIT o usuario ARCA" />
+                  <div style={{fontSize:10,color:'var(--gray2)',marginTop:3}}>Se completa automáticamente con el CUIT ingresado</div>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="form-label">Contraseña</label>
+                  <div style={{position:'relative'}}>
+                    <input className="form-input" type={showPass['arca_p']?'text':'password'} value={form.claves?.arca_clave||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,arca_clave:e.target.value}}))} placeholder="Contraseña ARCA" style={{paddingRight:44}} />
+                    <button onClick={()=>togglePass('arca_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>
+                      {showPass['arca_p']?'🙈':'👁️'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* ARBA — solo contraseña */}
+            <div className="clave-card" style={{marginBottom:14}}>
+              <div className="clave-card-title">🏠 ARBA / Rentas Provincia</div>
+              <div className="form-group" style={{marginBottom:0,maxWidth:340}}>
+                <label className="form-label">Contraseña</label>
+                <div style={{position:'relative'}}>
+                  <input className="form-input" type={showPass['arba_p']?'text':'password'} value={form.claves?.arba_clave||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,arba_clave:e.target.value}}))} placeholder="Contraseña ARBA" style={{paddingRight:44}} />
+                  <button onClick={()=>togglePass('arba_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>
+                    {showPass['arba_p']?'🙈':'👁️'}
+                  </button>
+                </div>
+                <div style={{fontSize:10,color:'var(--gray2)',marginTop:3}}>Usuario: se usa el mismo CUIT de ARCA</div>
+              </div>
+            </div>
+            {/* Municipal — solo contraseña */}
+            <div className="clave-card">
+              <div className="clave-card-title">🏙️ Municipal / Tasas</div>
+              <div className="form-group" style={{marginBottom:0,maxWidth:340}}>
+                <label className="form-label">Contraseña</label>
+                <div style={{position:'relative'}}>
+                  <input className="form-input" type={showPass['muni_p']?'text':'password'} value={form.claves?.muni_clave||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,muni_clave:e.target.value}}))} placeholder="Contraseña Municipal" style={{paddingRight:44}} />
+                  <button onClick={()=>togglePass('muni_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>
+                    {showPass['muni_p']?'🙈':'👁️'}
+                  </button>
+                </div>
+                <div style={{fontSize:10,color:'var(--gray2)',marginTop:3}}>Usuario: se usa el mismo CUIT de ARCA</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      {showCatalogo && <GestorTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} onClose={()=>setShowCatalogo(false)} />}
+    </div>
+  );
+
+  // ── DETAIL VIEW ─────────────────────────────────────
+  const renderDetail = () => {
+    const c = selected; if (!c) return null;
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:28}}>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <button className="btn btn-ghost btn-sm" onClick={backToList}>← Volver</button>
+            <div style={{width:52,height:52,borderRadius:14,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:'var(--black)'}}>
+              {initials(c.nombre)}
+            </div>
+            <div>
+              <div className="page-title" style={{fontSize:26}}>{c.nombre}</div>
+              <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
+                <span className={`badge ${c.tipo==='empresa'?'badge-blue':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>
+                  {c.tipo==='empresa'?'🏢 Empresa':c.tipo==='monotributista'?'📋 Mono':'👤 PF'}
+                </span>
+                <span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`}>{c.estado}</span>
+                {c.cuit && <span style={{fontSize:12,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{c.cuit}</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <button className="btn btn-danger btn-sm" onClick={()=>handleDelete(c.id)}>🗑️</button>
+            <button className="btn btn-gold" onClick={()=>openEdit(c)}>✏️ Editar</button>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:24}}>
+          {[
+            ['Honorario Mensual',fmt(c.honorario||0),'var(--gold)'],
+            ['Saldo Pendiente',c.saldoPendiente>0?fmt(c.saldoPendiente):'Al día ✓',c.saldoPendiente>0?'var(--amber)':'var(--green)'],
+            ['Cliente desde',c.desde?new Date(c.desde+'T12:00:00').getFullYear():'-','var(--black)'],
+            ['Tributos activos',(c.tributos||[]).length,'var(--black)'],
+          ].map(([label,val,color])=>(
+            <div key={label} className="stat-card" style={{padding:'16px 18px'}}>
+              <div className="stat-label">{label}</div>
+              <div style={{fontFamily:'Playfair Display,serif',fontSize:22,fontWeight:700,color,marginTop:4}}>{val}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content'}}>
+          {[['info','📋 Información'],['tributos','📊 Tributos'],['claves','🔑 Claves'],['notas','📝 Notas']].map(([t,l])=>(
+            <button key={t} className={`tab ${detailTab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setDetailTab(t)}>{l}</button>
+          ))}
+        </div>
+        {detailTab==='info' && (
+          <div className="grid-2">
+            <div className="card">
+              <div className="card-title"><span>👤</span> Datos de Contacto</div>
+              {[['Email',c.email||'-'],['Teléfono',c.telefono||'-'],['Responsable',c.responsable||'-'],['Domicilio',c.domicilio||'-']].map(([k,v])=>(
+                <div key={k} style={{padding:'8px 0',borderBottom:'1px solid var(--cream2)'}}>
+                  <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:2}}>{k}</div>
+                  <div style={{fontSize:14,fontWeight:500,wordBreak:'break-word'}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div className="card">
+              <div className="card-title"><span>💼</span> Datos Comerciales</div>
+              {[['Servicio',c.servicio||'-'],['Estado',c.estado],['Empleados',c.empleados>0?c.empleados:'-'],['Tipo',c.tipo==='empresa'?'Empresa':c.tipo==='monotributista'?'Monotributista':'Persona Física']].map(([k,v])=>(
+                <div key={k} style={{padding:'8px 0',borderBottom:'1px solid var(--cream2)'}}>
+                  <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:2}}>{k}</div>
+                  <div style={{fontSize:14,fontWeight:500}}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {detailTab==='tributos' && (
+          <div className="card">
+            <div className="card-title"><span>📊</span> Tributos del Cliente</div>
+            {(c.tributos||[]).length===0
+              ? <div className="empty-state" style={{padding:40}}><div className="empty-icon">📊</div><p>Sin tributos asignados.</p></div>
+              : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
+                  {(c.tributos||[]).map(t=>(
+                    <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:'var(--cream)',borderRadius:'var(--r2)',border:'1px solid rgba(201,169,110,0.15)'}}>
+                      <div style={{width:36,height:36,borderRadius:9,background:'rgba(201,169,110,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>
+                        {CAT_ICON[t.categoria]||'📋'}
+                      </div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600}}>{t.label}</div>
+                        <div style={{display:'flex',gap:6,marginTop:3}}>
+                          <span className="badge badge-blue" style={{fontSize:9}}>{t.categoria||t.tipo}</span>
+                          <span className="badge badge-gray" style={{fontSize:9}}>{t.organismo}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+        )}
+        {detailTab==='claves' && (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
+            {[
+              {title:'🏛️ ARCA (Ex-AFIP)', showUser:true, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.arca_clave, ku:'d_arca_u', kp:'d_arca_p'},
+              {title:'🏠 ARBA / Provincia', showUser:false, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.arba_clave, ku:'d_arba_u', kp:'d_arba_p'},
+              {title:'🏙️ Municipal', showUser:false, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.muni_clave, ku:'d_muni_u', kp:'d_muni_p'},
+            ].map(({title,showUser,u,p,kp})=>(
+              <div key={title} className="card">
+                <div className="card-title" style={{marginBottom:14}}><span>🔑</span> {title}</div>
+                {showUser && (
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:4}}>CUIT / Usuario</div>
+                    <div style={{padding:'8px 12px',background:'var(--cream)',borderRadius:'var(--r2)',fontFamily:'JetBrains Mono,monospace',fontSize:13,color:u?'var(--black)':'var(--gray2)',fontStyle:u?'normal':'italic'}}>{u||'No cargado'}</div>
+                  </div>
+                )}
+                {!showUser && u && (
+                  <div style={{marginBottom:10,fontSize:11,color:'var(--gray2)'}}>Usuario: {u}</div>
+                )}
+                <div>
+                  <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:4}}>Contraseña</div>
+                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    <div style={{flex:1,padding:'8px 12px',background:'var(--cream)',borderRadius:'var(--r2)',fontFamily:'JetBrains Mono,monospace',fontSize:13,color:p?'var(--black)':'var(--gray2)',fontStyle:p?'normal':'italic',letterSpacing:p&&!showPass[kp]?'2px':'normal'}}>
+                      {!p?'No cargada':showPass[kp]?p:'●'.repeat(Math.min(p.length,12))}
+                    </div>
+                    {p && <button onClick={()=>togglePass(kp)} style={{background:'var(--cream2)',border:'1px solid rgba(201,169,110,0.2)',borderRadius:'var(--r2)',padding:'7px 10px',cursor:'pointer',fontSize:15}}>{showPass[kp]?'🙈':'👁️'}</button>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {detailTab==='notas' && (
+          <div className="card">
+            <div className="card-title"><span>📝</span> Notas</div>
+            {c.notas ? <div style={{fontSize:14,lineHeight:1.7,padding:'14px 16px',background:'var(--cream)',borderRadius:'var(--r2)',borderLeft:'3px solid var(--gold)'}}>{c.notas}</div>
+              : <div className="empty-state" style={{padding:40}}><div className="empty-icon">📝</div><p>Sin notas</p></div>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── LIST VIEW ────────────────────────────────────────
+  const renderList = () => (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Clientes</div>
+          <div className="page-subtitle">{filtered.length} cliente{filtered.length!==1?'s':''} · {clients.filter(c=>c.estado==='activo').length} activos</div>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn btn-ghost btn-sm" style={{fontSize:12}} onClick={()=>setShowCatalogo(true)}>⚙️ Catálogo Tributos</button>
+          <button className="btn btn-gold" onClick={openNew}>+ Nuevo Cliente</button>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <div className="search-wrap" style={{flex:1,minWidth:220}}>
+          <span className="search-icon">🔍</span>
+          <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
+        </div>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {[['todos','Todos'],['persona_fisica','Personas'],['monotributista','Monotributo'],['empresa','Empresas'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
+            <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {filtered.length===0
+        ? <div className="empty-state card"><div className="empty-icon">👥</div><p>No se encontraron clientes. ¡Agregá el primero!</p></div>
+        : (
+          <div className="card" style={{padding:0,overflow:'hidden'}}>
+            <div className="table-wrap">
+              <table>
+                <thead><tr>
+                  <th style={{paddingLeft:16}}>Cliente</th><th>CUIT</th><th>Tipo</th>
+                  <th>Servicio</th><th>Tributos</th><th>Honorario</th><th>Saldo</th><th>Estado</th>
+                </tr></thead>
+                <tbody>
+                  {filtered.map(c=>(
+                    <tr key={c.id} className="client-row" onClick={()=>openDetail(c)}>
+                      <td style={{paddingLeft:16}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{width:34,height:34,borderRadius:9,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
+                          <div>
+                            <div style={{fontWeight:600,fontSize:14}}>{c.nombre}</div>
+                            {c.email&&<div style={{fontSize:11,color:'var(--gray)'}}>{c.email}</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gray)'}}>{c.cuit||'—'}</td>
+                      <td><span className={`badge ${c.tipo==='empresa'?'badge-blue':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='empresa'?'🏢 Empresa':c.tipo==='monotributista'?'📋 Mono':'👤 PF'}</span></td>
+                      <td style={{fontSize:12,color:'var(--gray)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
+                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} tributo{(c.tributos||[]).length>1?'s':''}</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
+                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
+                      <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
+                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      }
+      {showCatalogo && <GestorTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} onClose={()=>setShowCatalogo(false)} />}
+    </div>
+  );
+
+  if (view==='detail') return renderDetail();
+  if (view==='new'||view==='edit') return renderForm();
+  return renderList();
+}
+
+// ── VENCIMIENTOS (CALENDARIO) ────────────────────────
+function Vencimientos({ vencimientos, setVencimientos, clients }) {
+  const now = new Date();
+  const [calYear,  setCalYear]  = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth());     // 0-based
+  const [selDate,  setSelDate]  = useState(todayStr);           // 'YYYY-MM-DD'
+  const [modal,    setModal]    = useState(null);
+  const [form,     setForm]     = useState({});
+  const [selVenc,  setSelVenc]  = useState(null);
+
+  // helpers
+  const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
+  const firstDow    = (y,m) => new Date(y, m, 1).getDay(); // 0=Sun
+  const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+  const prevMonth = () => {
+    if (calMonth === 0) { setCalYear(y=>y-1); setCalMonth(11); }
+    else setCalMonth(m=>m-1);
+  };
+  const nextMonth = () => {
+    if (calMonth === 11) { setCalYear(y=>y+1); setCalMonth(0); }
+    else setCalMonth(m=>m+1);
+  };
+
+  // group vencimientos by date string
+  const byDate = {};
+  vencimientos.forEach(v => {
+    if (!byDate[v.fecha]) byDate[v.fecha] = [];
+    byDate[v.fecha].push(v);
+  });
+
+  // vencimientos for selected day
+  const dayVenc = (byDate[selDate] || []).sort((a,b)=>a.completado-b.completado);
+
+  const toggle = async (id) => {
+    const v = vencimientos.find(x=>x.id===id);
+    try { await FB().updateDoc(FB().doc(FB().db,'vencimientos',id),{completado:!v.completado}); } catch(e) {}
+    setVencimientos(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre||!form.fecha) return;
+    try {
+      if (!selVenc) {
+        const ref = await FB().addDoc(FB().collection(FB().db,'vencimientos'),{...form,completado:false,createdAt:FB().serverTimestamp()});
+        setVencimientos(prev=>[...prev,{...form,id:ref.id,completado:false}]);
+      } else {
+        await FB().updateDoc(FB().doc(FB().db,'vencimientos',selVenc.id),form);
+        setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...form,id:selVenc.id,completado:selVenc.completado}:x));
+      }
+    } catch(e) {
+      if (!selVenc) setVencimientos(prev=>[...prev,{...form,id:'local-'+Date.now(),completado:false}]);
+      else setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...form,id:selVenc.id,completado:selVenc.completado}:x));
+    }
+    setModal(null); setSelVenc(null);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este vencimiento?')) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'vencimientos',id)); } catch(e) {}
+    setVencimientos(prev=>prev.filter(x=>x.id!==id));
+  };
+
+  const openNew = () => {
+    setSelVenc(null);
+    setForm({tipo:'fiscal',prioridad:'media',fecha:selDate});
+    setModal('form');
+  };
+  const openEdit = (v) => {
+    setSelVenc(v);
+    setForm({...v});
+    setModal('form');
+  };
+
+  // dot color for a date
+  const dotColor = (dateStr) => {
+    const vs = byDate[dateStr]||[];
+    if (!vs.length) return null;
+    const pending = vs.filter(v=>!v.completado);
+    if (!pending.length) return 'var(--green)';
+    const hasUrgent = pending.some(v=>daysUntil(dateStr)<=7);
+    return hasUrgent ? 'var(--red)' : 'var(--gold)';
+  };
+
+  const days = daysInMonth(calYear, calMonth);
+  const firstDay = firstDow(calYear, calMonth);  // 0=Sun
+  // adjust to Mon-start: 0=Mon…6=Sun
+  const startOffset = (firstDay + 6) % 7;
+  const DOW_LABELS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Agenda de Vencimientos</div>
+          <div className="page-subtitle">Calendario fiscal · {MONTHS_FULL[calMonth]} {calYear}</div>
+        </div>
+        <button className="btn btn-gold" onClick={openNew}>+ Nuevo Vencimiento</button>
+      </div>
+
+      <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
+
+        {/* ── CALENDAR ── */}
+        <div style={{flex:1,minWidth:0}}>
+          <div className="card" style={{padding:20}}>
+            {/* Month nav */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+              <button className="btn btn-ghost btn-sm" onClick={prevMonth}>‹ Ant</button>
+              <div style={{fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:'var(--black)'}}>
+                {MONTHS_FULL[calMonth]} {calYear}
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={nextMonth}>Sig ›</button>
+            </div>
+
+            {/* DOW headers */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:8}}>
+              {DOW_LABELS.map(d=>(
+                <div key={d} style={{textAlign:'center',fontSize:11,fontWeight:700,color:'var(--gray2)',
+                  textTransform:'uppercase',letterSpacing:'0.5px',fontFamily:'JetBrains Mono,monospace',padding:'4px 0'}}>
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Day cells */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4}}>
+              {/* empty cells before month start */}
+              {Array.from({length:startOffset}).map((_,i)=>(
+                <div key={'e'+i} style={{aspectRatio:'1',borderRadius:10}} />
+              ))}
+              {Array.from({length:days}).map((_,i)=>{
+                const d = i+1;
+                const dateStr = ymd(calYear,calMonth,d);
+                const isToday = dateStr === todayStr;
+                const isSel   = dateStr === selDate;
+                const dot     = dotColor(dateStr);
+                const count   = (byDate[dateStr]||[]).filter(v=>!v.completado).length;
+                return (
+                  <div key={d} onClick={()=>setSelDate(dateStr)}
+                    style={{
+                      aspectRatio:'1',borderRadius:10,display:'flex',flexDirection:'column',
+                      alignItems:'center',justifyContent:'center',cursor:'pointer',
+                      transition:'all 0.15s',position:'relative',
+                      background: isSel ? 'var(--black)' : isToday ? 'rgba(201,169,110,0.15)' : 'var(--cream)',
+                      border: isToday && !isSel ? '2px solid var(--gold)' : '2px solid transparent',
+                    }}>
+                    <div style={{fontSize:14,fontWeight:isSel||isToday?700:400,
+                      color:isSel?'var(--gold2)':isToday?'var(--gold)':'var(--black)'}}>
+                      {d}
+                    </div>
+                    {dot && (
+                      <div style={{display:'flex',gap:2,marginTop:2}}>
+                        {count>0 && Array.from({length:Math.min(count,3)}).map((_,i)=>(
+                          <div key={i} style={{width:5,height:5,borderRadius:'50%',background:dot}} />
+                        ))}
+                        {count>3 && <div style={{width:5,height:5,borderRadius:'50%',background:dot,opacity:0.5}} />}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div style={{display:'flex',gap:16,marginTop:16,paddingTop:14,borderTop:'1px solid var(--cream2)',flexWrap:'wrap'}}>
+              {[['var(--red)','Urgente / Vencido'],['var(--gold)','Pendiente'],['var(--green)','Completado']].map(([c,l])=>(
+                <div key={l} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray)'}}>
+                  <div style={{width:8,height:8,borderRadius:'50%',background:c}} />{l}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── PANEL LATERAL ── */}
+        <div style={{width:360,flexShrink:0,position:'sticky',top:20}}>
+          <div className="card" style={{padding:0,overflow:'hidden'}}>
+            {/* Panel header */}
+            <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',padding:'18px 20px',
+              display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,color:'var(--gold2)'}}>
+                  {selDate === todayStr ? '📅 Hoy' : fmtDate(selDate)}
+                </div>
+                <div style={{fontSize:11,color:'rgba(250,248,243,0.5)',marginTop:2}}>
+                  {dayVenc.length === 0 ? 'Sin vencimientos' :
+                   `${dayVenc.filter(v=>!v.completado).length} pendiente${dayVenc.filter(v=>!v.completado).length!==1?'s':''}`}
+                </div>
+              </div>
+              <button className="btn btn-gold btn-sm" onClick={openNew} style={{fontSize:12}}>+ Agregar</button>
+            </div>
+
+            <div style={{padding:16,maxHeight:520,overflowY:'auto'}}>
+              {dayVenc.length === 0 ? (
+                <div className="empty-state" style={{padding:'36px 16px'}}>
+                  <div className="empty-icon" style={{fontSize:32}}>🎉</div>
+                  <p>Sin vencimientos para este día</p>
+                </div>
+              ) : (
+                dayVenc.map(v => {
+                  const days = daysUntil(v.fecha);
+                  return (
+                    <div key={v.id} style={{
+                      padding:'12px 14px',borderRadius:10,marginBottom:8,
+                      background: v.completado ? 'var(--cream)' : days<=7 ? 'rgba(192,57,43,0.06)' : 'var(--cream)',
+                      border: v.completado ? '1px solid var(--cream2)' :
+                              days<=7 ? '1px solid rgba(192,57,43,0.2)' : '1px solid rgba(201,169,110,0.15)',
+                      opacity: v.completado ? 0.7 : 1,
+                    }}>
+                      <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                        <div className={`task-check ${v.completado?'done':''}`}
+                          onClick={()=>toggle(v.id)} style={{marginTop:2,flexShrink:0}} />
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
+                            textDecoration:v.completado?'line-through':'none',lineHeight:1.3}}>
+                            {v.nombre}
+                          </div>
+                          <div style={{display:'flex',gap:6,marginTop:5,flexWrap:'wrap',alignItems:'center'}}>
+                            {v.clientes && <span className="badge badge-gray" style={{fontSize:9}}>{v.clientes}</span>}
+                            <span className={`badge ${v.tipo==='fiscal'?'badge-blue':v.tipo==='laboral'?'badge-amber':'badge-gray'}`} style={{fontSize:9}}>{v.tipo||'otro'}</span>
+                            <span className={`badge ${v.prioridad==='alta'?'badge-red':v.prioridad==='media'?'badge-amber':'badge-gray'}`} style={{fontSize:9}}>{v.prioridad}</span>
+                          </div>
+                        </div>
+                        <div style={{display:'flex',gap:4,flexShrink:0}}>
+                          <button className="btn btn-ghost btn-sm btn-icon" style={{width:28,height:28,padding:0,fontSize:12}}
+                            onClick={()=>openEdit(v)}>✏️</button>
+                          <button className="btn btn-danger btn-sm btn-icon" style={{width:28,height:28,padding:0,fontSize:12}}
+                            onClick={()=>handleDelete(v.id)}>🗑️</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Upcoming summary */}
+          <div className="card" style={{marginTop:16,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
+              letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:12}}>
+              Próximos 7 días
+            </div>
+            {vencimientos
+              .filter(v=>!v.completado && daysUntil(v.fecha)>=0 && daysUntil(v.fecha)<=7)
+              .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha))
+              .slice(0,5)
+              .map(v=>{
+                const d = new Date(v.fecha+'T12:00:00');
+                return (
+                  <div key={v.id} onClick={()=>setSelDate(v.fecha)}
+                    style={{display:'flex',gap:10,alignItems:'center',padding:'7px 0',
+                      borderBottom:'1px solid var(--cream2)',cursor:'pointer'}}>
+                    <div style={{width:32,height:32,borderRadius:8,background:'var(--red2)',
+                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                      <div style={{fontSize:14,fontWeight:700,color:'var(--red)',lineHeight:1}}>{d.getDate()}</div>
+                      <div style={{fontSize:8,color:'var(--red)',textTransform:'uppercase',fontFamily:'JetBrains Mono,monospace'}}>{MONTHS_ES[d.getMonth()]}</div>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.nombre}</div>
+                      <div style={{fontSize:10,color:'var(--gray)'}}>{v.clientes||'General'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            {vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)>=0&&daysUntil(v.fecha)<=7).length===0 && (
+              <div style={{fontSize:12,color:'var(--green)',fontWeight:600}}>✓ Sin urgencias esta semana</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* FORM MODAL */}
+      {modal === 'form' && (
+        <Modal title={selVenc?'Editar Vencimiento':'Nuevo Vencimiento'}
+          onClose={()=>{setModal(null);setSelVenc(null);}}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>{setModal(null);setSelVenc(null);}}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={handleSave}>Guardar</button>
+          </>}>
+          <div className="form-group">
+            <label className="form-label">Descripción *</label>
+            <input className="form-input" value={form.nombre||''}
+              onChange={e=>setForm(f=>({...f,nombre:e.target.value}))}
+              placeholder="Ej: IVA Mensual - Abril" autoFocus />
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Fecha *</label>
+              <input className="form-input" type="date" value={form.fecha||''}
+                onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tipo</label>
+              <select className="form-select" value={form.tipo||'fiscal'}
+                onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+                <option value="fiscal">Fiscal / Impositivo</option>
+                <option value="laboral">Laboral</option>
+                <option value="societario">Societario</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Cliente(s)</label>
+              <select className="form-select" value={form.clientes||''}
+                onChange={e=>setForm(f=>({...f,clientes:e.target.value}))}>
+                <option value="">Todos / General</option>
+                <option value="Todos los monotributistas">Todos los monotributistas</option>
+                {clients.map(c=><option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Prioridad</label>
+              <select className="form-select" value={form.prioridad||'media'}
+                onChange={e=>setForm(f=>({...f,prioridad:e.target.value}))}>
+                <option value="alta">Alta</option>
+                <option value="media">Media</option>
+                <option value="baja">Baja</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Notas</label>
+            <textarea className="form-textarea" value={form.notas||''}
+              onChange={e=>setForm(f=>({...f,notas:e.target.value}))}
+              placeholder="Detalles adicionales..." style={{minHeight:70}} />
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── FACTURACIÓN ──────────────────────────────────────
+function Facturacion({ clients }) {
+  const [facturas, setFacturas] = useState([
+    { id: 'f1', clienteId: 'mock-1', cliente: 'TechSolutions S.R.L.', concepto: 'Pack Integral - Marzo 2026', monto: 450000, fecha: '2026-03-01', estado: 'cobrado', mes: '2026-03' },
+    { id: 'f2', clienteId: 'mock-2', cliente: 'Valentina Rodríguez', concepto: 'Asesoría Fiscal - Marzo 2026', monto: 195000, fecha: '2026-03-01', estado: 'pendiente', mes: '2026-03' },
+    { id: 'f3', clienteId: 'mock-3', cliente: 'Diego Fernández', concepto: 'Contabilidad Básica - Marzo 2026', monto: 155000, fecha: '2026-03-01', estado: 'cobrado', mes: '2026-03' },
+    { id: 'f4', clienteId: 'mock-1', cliente: 'TechSolutions S.R.L.', concepto: 'Pack Integral - Febrero 2026', monto: 450000, fecha: '2026-02-01', estado: 'cobrado', mes: '2026-02' },
+    { id: 'f5', clienteId: 'mock-2', cliente: 'Valentina Rodríguez', concepto: 'Asesoría Fiscal - Febrero 2026', monto: 195000, fecha: '2026-02-15', estado: 'cobrado', mes: '2026-02' },
+  ]);
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({});
+
+  const totalCobrado = facturas.filter(f => f.estado === 'cobrado').reduce((s,f) => s + f.monto, 0);
+  const totalPendiente = facturas.filter(f => f.estado === 'pendiente').reduce((s,f) => s + f.monto, 0);
+
+  const handleSave = async () => {
+    if (!form.cliente || !form.monto) return;
+    try {
+      const ref = await FB().addDoc(FB().collection(FB().db, 'facturas'), {...form, monto: Number(form.monto), createdAt: FB().serverTimestamp()});
+      setFacturas(prev => [...prev, {...form, id: ref.id, monto: Number(form.monto)}]);
+    } catch(e) {
+      setFacturas(prev => [...prev, {...form, id: 'local-'+Date.now(), monto: Number(form.monto)}]);
+    }
+    setModal(null);
+  };
+
+  const toggleEstado = (id) => {
+    setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: f.estado === 'cobrado' ? 'pendiente' : 'cobrado'} : f));
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Facturación</div>
+          <div className="page-subtitle">Honorarios y estado de cobros</div>
+        </div>
+        <button className="btn btn-gold" onClick={() => { setForm({ estado: 'pendiente', fecha: todayStr }); setModal('new'); }}>+ Nueva Factura</button>
+      </div>
+
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3, 1fr)', marginBottom:24}}>
+        <div className="stat-card">
+          <div className="stat-icon">💰</div>
+          <div className="stat-label">Total Cobrado</div>
+          <div className="stat-value gold">{fmtShort(totalCobrado)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">⏳</div>
+          <div className="stat-label">Pendiente de Cobro</div>
+          <div className="stat-value" style={{color: totalPendiente > 0 ? 'var(--amber)' : 'var(--green)'}}>{fmtShort(totalPendiente)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">📋</div>
+          <div className="stat-label">Total Facturas</div>
+          <div className="stat-value">{facturas.length}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th>Cliente</th>
+                <th>Monto</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {facturas.sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
+                <tr key={f.id}>
+                  <td style={{fontWeight:500}}>{f.concepto}</td>
+                  <td style={{fontSize:13}}>{f.cliente}</td>
+                  <td style={{fontFamily:'JetBrains Mono, monospace', fontWeight:700}}>{fmt(f.monto)}</td>
+                  <td style={{fontFamily:'JetBrains Mono, monospace', fontSize:13}}>{fmtDate(f.fecha)}</td>
+                  <td>
+                    <span className={`badge ${f.estado === 'cobrado' ? 'badge-green' : 'badge-amber'}`}>
+                      {f.estado === 'cobrado' ? '✓ Cobrado' : '⏳ Pendiente'}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="btn btn-sm btn-ghost" onClick={() => toggleEstado(f.id)}>
+                      {f.estado === 'cobrado' ? 'Marcar Pendiente' : '✓ Marcar Cobrado'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modal === 'new' && (
+        <Modal title="Nueva Factura / Honorario" onClose={() => setModal(null)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={() => setModal(null)}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={handleSave}>Guardar</button>
+          </>}>
+          <div className="form-group">
+            <label className="form-label">Cliente</label>
+            <select className="form-select" value={form.cliente||''} onChange={e => setForm(f => ({...f, cliente: e.target.value}))}>
+              <option value="">Seleccionar cliente...</option>
+              {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Concepto</label>
+            <input className="form-input" value={form.concepto||''} onChange={e => setForm(f => ({...f, concepto: e.target.value}))} placeholder="Asesoría Fiscal - Abril 2026" />
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Monto (ARS)</label>
+              <input className="form-input" type="number" value={form.monto||''} onChange={e => setForm(f => ({...f, monto: e.target.value}))} placeholder="195000" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fecha</label>
+              <input className="form-input" type="date" value={form.fecha||''} onChange={e => setForm(f => ({...f, fecha: e.target.value}))} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Estado</label>
+            <select className="form-select" value={form.estado||'pendiente'} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
+              <option value="pendiente">Pendiente</option>
+              <option value="cobrado">Cobrado</option>
+            </select>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── TAREAS ───────────────────────────────────────────
+function Tareas({ tareas, setTareas, clients }) {
+  const [newText, setNewText] = useState('');
+  const [newCliente, setNewCliente] = useState('');
+  const [filter, setFilter] = useState('pendientes');
+
+  const shown = tareas.filter(t =>
+    filter === 'pendientes' ? !t.completado :
+    filter === 'completadas' ? t.completado : true
+  );
+
+  const addTask = async () => {
+    if (!newText.trim()) return;
+    const task = { texto: newText, cliente: newCliente, completado: false, fecha: todayStr };
+    try {
+      const ref = await FB().addDoc(FB().collection(FB().db, 'tareas'), {...task, createdAt: FB().serverTimestamp()});
+      setTareas(prev => [{ ...task, id: ref.id }, ...prev]);
+    } catch(e) {
+      setTareas(prev => [{ ...task, id: 'local-'+Date.now() }, ...prev]);
+    }
+    setNewText(''); setNewCliente('');
+  };
+
+  const toggle = async (id) => {
+    const t = tareas.find(x => x.id === id);
+    try { await FB().updateDoc(FB().doc(FB().db, 'tareas', id), { completado: !t.completado }); } catch(e) {}
+    setTareas(prev => prev.map(x => x.id === id ? {...x, completado: !x.completado} : x));
+  };
+
+  const del = async (id) => {
+    try { await FB().deleteDoc(FB().doc(FB().db, 'tareas', id)); } catch(e) {}
+    setTareas(prev => prev.filter(x => x.id !== id));
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Tareas</div>
+          <div className="page-subtitle">{tareas.filter(t => !t.completado).length} tareas pendientes</div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:20}}>
+        <div className="quick-add-bar">
+          <input value={newText} onChange={e => setNewText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addTask()}
+            placeholder="Nueva tarea... (Enter para agregar)" />
+          <select className="form-select" style={{width:'auto', minWidth:180}} value={newCliente} onChange={e => setNewCliente(e.target.value)}>
+            <option value="">Sin cliente</option>
+            {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+          <button className="btn btn-gold btn-sm" onClick={addTask}>+ Agregar</button>
+        </div>
+      </div>
+
+      <div style={{display:'flex', gap:8, marginBottom:16}}>
+        {['pendientes','completadas','todas'].map(f => (
+          <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter(f)}>
+            {f === 'pendientes' ? `⏳ Pendientes (${tareas.filter(t => !t.completado).length})` :
+             f === 'completadas' ? `✅ Completadas (${tareas.filter(t => t.completado).length})` : '📋 Todas'}
+          </button>
+        ))}
+      </div>
+
+      <div className="card">
+        {shown.length === 0
+          ? <div className="empty-state"><div className="empty-icon">✅</div><p>Sin tareas en este filtro</p></div>
+          : shown.map(t => (
+            <div key={t.id} className="task-item" style={{padding:'14px 0'}}>
+              <div className={`task-check ${t.completado ? 'done' : ''}`} onClick={() => toggle(t.id)} />
+              <div style={{flex:1}}>
+                <div className={`task-text ${t.completado ? 'done' : ''}`} style={{fontSize:15}}>{t.texto}</div>
+                <div style={{display:'flex', gap:8, marginTop:4, alignItems:'center'}}>
+                  {t.cliente && <span className="badge badge-gray">{t.cliente}</span>}
+                  <span className="nota-date">{fmtDate(t.fecha)}</span>
+                </div>
+              </div>
+              <button className="btn btn-sm btn-danger" onClick={() => del(t.id)}>🗑️</button>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ── NOTAS ────────────────────────────────────────────
+function Notas({ notas, setNotas, clients }) {
+  const [text, setText] = useState('');
+  const [cliente, setCliente] = useState('');
+
+  const addNota = async () => {
+    if (!text.trim()) return;
+    const nota = { texto: text, cliente, fecha: todayStr };
+    try {
+      const ref = await FB().addDoc(FB().collection(FB().db, 'notas'), {...nota, createdAt: FB().serverTimestamp()});
+      setNotas(prev => [{ ...nota, id: ref.id }, ...prev]);
+    } catch(e) {
+      setNotas(prev => [{ ...nota, id: 'local-'+Date.now() }, ...prev]);
+    }
+    setText(''); setCliente('');
+  };
+
+  const del = async (id) => {
+    try { await FB().deleteDoc(FB().doc(FB().db, 'notas', id)); } catch(e) {}
+    setNotas(prev => prev.filter(n => n.id !== id));
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Notas & Anotaciones</div>
+          <div className="page-subtitle">Registros rápidos y observaciones</div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:24}}>
+        <div className="card-title"><span>✍️</span> Nueva Anotación</div>
+        <textarea className="form-textarea" style={{marginBottom:12}} value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Escribí tu nota aquí... (llamados, reuniones, recordatorios, ideas)" />
+        <div style={{display:'flex', gap:10, alignItems:'center'}}>
+          <select className="form-select" style={{width:'auto', minWidth:200}} value={cliente} onChange={e => setCliente(e.target.value)}>
+            <option value="">Sin cliente asociado</option>
+            {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+          <button className="btn btn-gold" onClick={addNota}>+ Guardar Nota</button>
+        </div>
+      </div>
+
+      {notas.length === 0
+        ? <div className="empty-state"><div className="empty-icon">📝</div><p>Sin notas todavía. ¡Empezá a escribir!</p></div>
+        : notas.map(n => (
+          <div className="nota-card" key={n.id}>
+            <div className="nota-text">{n.texto}</div>
+            <div className="nota-meta">
+              <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                <div className="nota-date">{fmtDate(n.fecha)}</div>
+                {n.cliente && <span className="badge badge-gold">{n.cliente}</span>}
+              </div>
+              <button className="btn btn-sm btn-danger" onClick={() => del(n.id)}>🗑️ Eliminar</button>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+// ── GESTOR DE TRIBUTOS MODAL ─────────────────────────
+function GestorTributos({ tributosCatalogo, setTributosCatalogo, onClose }) {
+  const [tab, setTab]       = useState('lista');
+  const [form, setForm]     = useState({ label:'', categoria:'Nacional', organismo:'ARCA', periodicidad:'mensual', dia:'' });
+  const [editId, setEditId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const CAT_ICON = { Nacional:'🏛️', Provincial:'🏠', Municipal:'🏙️', Laboral:'👷', Societario:'📂', Otro:'📋' };
+
+  const filtered = tributosCatalogo.filter(t =>
+    (t.label||'').toLowerCase().includes(search.toLowerCase()) ||
+    (t.categoria||'').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openEdit = (t) => { setEditId(t.id); setForm({ label:t.label, categoria:t.categoria, organismo:t.organismo, periodicidad:t.periodicidad, dia:t.dia||'' }); setTab('nuevo'); };
+  const openNew  = () => { setEditId(null); setForm({ label:'', categoria:'Nacional', organismo:'ARCA', periodicidad:'mensual', dia:'' }); setTab('nuevo'); };
+
+  const handleSave = async () => {
+    if (!form.label.trim()) return;
+    setSaving(true);
+    const payload = { label:form.label.trim(), categoria:form.categoria, organismo:form.organismo, periodicidad:form.periodicidad, dia:Number(form.dia)||null };
+    try {
+      const fb = FB();
+      if (editId) {
+        await fb.updateDoc(fb.doc(fb.db,'tributos',editId), payload);
+        setTributosCatalogo(prev => prev.map(t => t.id===editId ? {...payload,id:editId} : t));
+      } else {
+        const ref = await fb.addDoc(fb.collection(fb.db,'tributos'), {...payload, createdAt:fb.serverTimestamp()});
+        setTributosCatalogo(prev => [...prev, {...payload, id:ref.id}]);
+      }
+    } catch(e) {
+      if (editId) setTributosCatalogo(prev => prev.map(t => t.id===editId ? {...payload,id:editId} : t));
+      else setTributosCatalogo(prev => [...prev, {...payload, id:'local-'+Date.now()}]);
+    }
+    setSaving(false); setTab('lista'); setEditId(null);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este tributo del catálogo?')) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'tributos',id)); } catch(e) {}
+    setTributosCatalogo(prev => prev.filter(t => t.id !== id));
+  };
+
+  return (
+    <Modal title="⚙️ Catálogo de Tributos" onClose={onClose} wide
+      footer={
+        tab==='lista'
+          ? <button className="btn btn-gold btn-sm" onClick={openNew}>+ Nuevo Tributo</button>
+          : <><button className="btn btn-ghost btn-sm" onClick={()=>{setTab('lista');setEditId(null);}}>Cancelar</button>
+              <button className="btn btn-gold btn-sm" onClick={handleSave} disabled={saving}>{saving?'Guardando...':editId?'Guardar Cambios':'Crear Tributo'}</button></>
+      }>
+      <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content'}}>
+        {[['lista','📋 Catálogo'],['nuevo',editId?'✏️ Editar':'➕ Nuevo']].map(([t,l])=>(
+          <button key={t} className={`tab ${tab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setTab(t)}>{l}</button>
+        ))}
+      </div>
+      {tab==='lista' && (
+        <div>
+          <div className="search-wrap" style={{marginBottom:16}}>
+            <span className="search-icon">🔍</span>
+            <input className="search-input" placeholder="Buscar tributo..." value={search} onChange={e=>setSearch(e.target.value)} />
+          </div>
+          {TRIBUTO_CATEGORIAS.map(cat => {
+            const items = filtered.filter(t=>(t.categoria||'Otro')===cat);
+            if (!items.length) return null;
+            return (
+              <div key={cat} style={{marginBottom:20}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--gold)',textTransform:'uppercase',letterSpacing:'1.5px',fontFamily:'JetBrains Mono,monospace',marginBottom:8,display:'flex',alignItems:'center',gap:8}}>
+                  <span>{CAT_ICON[cat]||'📋'}</span>{cat}
+                  <span style={{fontWeight:400,color:'var(--gray2)',letterSpacing:0}}>· {items.length}</span>
+                </div>
+                {items.map(t=>(
+                  <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:'var(--cream)',borderRadius:8,marginBottom:6,border:'1px solid rgba(201,169,110,0.12)'}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600}}>{t.label}</div>
+                      <div style={{fontSize:11,color:'var(--gray)',marginTop:2,fontFamily:'JetBrains Mono,monospace'}}>
+                        {t.organismo} · {t.periodicidad}{t.dia?` · día ${t.dia}`:''}
+                      </div>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{padding:'4px 8px',fontSize:12}} onClick={()=>openEdit(t)}>✏️</button>
+                    <button className="btn btn-danger btn-sm" style={{padding:'4px 8px',fontSize:12}} onClick={()=>handleDelete(t.id)}>🗑️</button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          {filtered.length===0 && <div className="empty-state"><div className="empty-icon">📊</div><p>No hay tributos en el catálogo</p></div>}
+        </div>
+      )}
+      {tab==='nuevo' && (
+        <div>
+          <div className="form-group">
+            <label className="form-label">Nombre del Tributo *</label>
+            <input className="form-input" value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} placeholder="Ej: IVA Mensual, IIBB La Plata..." autoFocus />
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Categoría</label>
+              <select className="form-select" value={form.categoria} onChange={e=>setForm(f=>({...f,categoria:e.target.value}))}>
+                {TRIBUTO_CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Organismo</label>
+              <select className="form-select" value={form.organismo} onChange={e=>setForm(f=>({...f,organismo:e.target.value}))}>
+                {TRIBUTO_ORGANISMOS.map(o=><option key={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Periodicidad</label>
+              <select className="form-select" value={form.periodicidad} onChange={e=>setForm(f=>({...f,periodicidad:e.target.value}))}>
+                {TRIBUTO_PERIODICIDADES.map(p=><option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Día de vencimiento <span style={{color:'var(--gray2)',fontWeight:400}}>(opcional)</span></label>
+              <input className="form-input" type="number" min="1" max="31" value={form.dia} onChange={e=>setForm(f=>({...f,dia:e.target.value}))} placeholder="Ej: 20" />
+            </div>
+          </div>
+          <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,fontSize:12,color:'#1e40af',marginTop:4}}>
+            💡 El día se usa para generar automáticamente vencimientos al crear un cliente nuevo.
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── MAIN APP ─────────────────────────────────────────
+function App() {
+  const [user, setUser]             = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [section, setSection]       = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [clients, setClients]             = useState(MOCK_CLIENTS);
+  const [vencimientos, setVencimientos]   = useState(CALENDARIO_2026);
+  const [tributosCatalogo, setTributosCatalogo] = useState(TRIBUTOS_SEED);
+  const [tareas, setTareas]               = useState([
+    { id:'t1', texto:'Llamar a TechSolutions por nómina de abril', cliente:'TechSolutions S.R.L.', completado:false, fecha:'2026-03-10' },
+    { id:'t2', texto:'Enviar recordatorio de vencimiento IVA', cliente:'TechSolutions S.R.L.', completado:false, fecha:'2026-03-10' },
+    { id:'t3', texto:'Revisar recategorización Diego Fernández', cliente:'Diego Fernández', completado:false, fecha:'2026-03-12' },
+    { id:'t4', texto:'Cobrar honorario Valentina (pendiente Feb)', cliente:'Valentina Rodríguez', completado:false, fecha:'2026-03-10' },
+    { id:'t5', texto:'Actualizar tarifas para nuevo prospecto', cliente:'', completado:true, fecha:'2026-03-08' },
+  ]);
+  const [notas, setNotas] = useState([
+    { id:'n1', texto:'TechSolutions consulta por incorporar 2 empleados nuevos en abril.', cliente:'TechSolutions S.R.L.', fecha:'2026-03-09' },
+    { id:'n2', texto:'Diego Fernández podría recategorizarse en junio. Revisar facturación acumulada en mayo.', cliente:'Diego Fernández', fecha:'2026-03-07' },
+  ]);
+
+  // Auth listener
+  useEffect(() => {
+    const fb = FB();
+    if (!fb?.auth) { setAuthLoading(false); return; }
+    const unsub = fb.onAuthStateChanged(fb.auth, (u) => { setUser(u); setAuthLoading(false); });
+    return unsub;
+  }, []);
+
+  // Load Firestore data
+  useEffect(() => {
+    if (!user) return;
+    const fb = FB();
+    if (!fb?.db) return;
+
+    // clients
+    fb.getDocs(fb.collection(fb.db,'clients')).then(snap => {
+      if (!snap.empty) {
+        const data = snap.docs.map(d=>({id:d.id,...d.data()}));
+        setClients(prev => { const mockIds=MOCK_CLIENTS.map(m=>m.id); return [...prev.filter(c=>mockIds.includes(c.id)),...data]; });
+      }
+    }).catch(()=>{});
+
+    // vencimientos
+    fb.getDocs(fb.collection(fb.db,'vencimientos')).then(snap => {
+      if (!snap.empty) {
+        const data = snap.docs.map(d=>({id:d.id,...d.data()}));
+        setVencimientos(prev => { const mockIds=CALENDARIO_2026.map(v=>v.id); return [...prev.filter(v=>mockIds.includes(v.id)),...data]; });
+      }
+    }).catch(()=>{});
+
+    // tributos catalog — seed if empty
+    fb.getDocs(fb.collection(fb.db,'tributos')).then(snap => {
+      if (snap.empty) {
+        // Seed the collection from TRIBUTOS_SEED
+        Promise.all(TRIBUTOS_SEED.map(t => fb.addDoc(fb.collection(fb.db,'tributos'), {...t, createdAt:fb.serverTimestamp()})
+          .then(ref => ({...t, id:ref.id}))
+          .catch(() => t)
+        )).then(seeded => setTributosCatalogo(seeded));
+      } else {
+        setTributosCatalogo(snap.docs.map(d=>({id:d.id,...d.data()})));
+      }
+    }).catch(()=>{});
+
+    // tareas
+    fb.getDocs(fb.collection(fb.db,'tareas')).then(snap => {
+      if (!snap.empty) {
+        const data = snap.docs.map(d=>({id:d.id,...d.data()}));
+        setTareas(prev => { const m=['t1','t2','t3','t4','t5']; return [...prev.filter(t=>m.includes(t.id)),...data]; });
+      }
+    }).catch(()=>{});
+
+    // notas
+    fb.getDocs(fb.collection(fb.db,'notas')).then(snap => {
+      if (!snap.empty) {
+        const data = snap.docs.map(d=>({id:d.id,...d.data()}));
+        setNotas(prev => { const m=['n1','n2']; return [...prev.filter(n=>m.includes(n.id)),...data]; });
+      }
+    }).catch(()=>{});
+  }, [user]);
+
+  const handleLogout = async () => { try { await FB().signOut(FB().auth); } catch(e){} setUser(null); };
+
+  if (authLoading) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--black)'}}>
+      <div><div className="spinner" style={{width:48,height:48,borderWidth:4,margin:'0 auto 20px'}} />
+        <div style={{color:'var(--gold2)',fontFamily:'Playfair Display,serif',textAlign:'center'}}>Cargando...</div>
+      </div>
+    </div>
+  );
+
+  if (!user) return <LoginScreen onLogin={()=>{}} />;
+
+  const NAV = [
+    { id:'dashboard',    label:'Dashboard',    icon:'🏠' },
+    { id:'clientes',     label:'Clientes',     icon:'👥' },
+    { id:'vencimientos', label:'Vencimientos', icon:'📅', badge:vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)<=7).length||null },
+    { id:'facturacion',  label:'Facturación',  icon:'💰' },
+    { id:'tareas',       label:'Tareas',       icon:'✅', badge:tareas.filter(t=>!t.completado).length||null, badgeClass:'amber' },
+    { id:'notas',        label:'Notas',        icon:'📝' },
+  ];
+
+  const renderSection = () => {
+    switch(section) {
+      case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} />;
+      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
+      case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
+      case 'facturacion':  return <Facturacion clients={clients} />;
+      case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
+      case 'notas':        return <Notas notas={notas} setNotas={setNotas} clients={clients} />;
+      default:             return null;
+    }
+  };
+
+  return (
+    <div className="app-layout">
+      <aside className={`sidebar ${sidebarCollapsed?'collapsed':''}`} style={{position:'relative'}}>
+        {/* Toggle button */}
+        <div className="sidebar-toggle" onClick={()=>setSidebarCollapsed(c=>!c)} title={sidebarCollapsed?'Expandir menú':'Colapsar menú'}>
+          {sidebarCollapsed ? '›' : '‹'}
+        </div>
+
+        <div className="sidebar-header">
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <div style={{width:38,height:38,borderRadius:10,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontWeight:900,fontSize:16,color:'var(--black)',flexShrink:0}}>AP</div>
+            {!sidebarCollapsed && (
+              <div>
+                <div className="sidebar-brand">Aragón Paz</div>
+                <div className="sidebar-brand-sub">Estudio Contable</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+          {!sidebarCollapsed && <div className="nav-section-label">Principal</div>}
+          {NAV.map(item => (
+            <div key={item.id} className={`nav-item ${section===item.id?'active':''}`}
+              onClick={()=>setSection(item.id)} data-tooltip={item.label}>
+              <span className="nav-icon">{item.icon}</span>
+              {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              {!sidebarCollapsed && item.badge>0 && <span className={`nav-badge ${item.badgeClass||''}`}>{item.badge}</span>}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-user">
+          <div className="user-avatar">
+            {user.photoURL ? <img src={user.photoURL} alt={user.displayName} /> : initials(user.displayName||user.email)}
+          </div>
+          {!sidebarCollapsed && (
+            <div className="user-info" style={{flex:1,minWidth:0}}>
+              <div className="user-name">{user.displayName?.split(' ')[0]||'Usuario'}</div>
+              <div className="user-role">Contador</div>
+            </div>
+          )}
+          {!sidebarCollapsed && <button className="btn-logout" onClick={handleLogout} title="Cerrar sesión">⏻</button>}
+        </div>
+      </aside>
+
+      <main className={`main ${sidebarCollapsed?'collapsed':''}`}>
+        {renderSection()}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
