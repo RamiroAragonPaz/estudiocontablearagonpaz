@@ -181,7 +181,8 @@
     }
 
     /* ── LAYOUT ────────────────────────────────────── */
-    html, body { height: 100%; }
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #root { height: 100%; }
     .app-layout {
       display: flex;
       min-height: 100vh;
@@ -193,9 +194,9 @@
       width: var(--sidebar);
       background: var(--black);
       position: fixed;
-      top: 0; left: 0;
-      height: 100%;
-      min-height: 100vh;
+      top: 0;
+      left: 0;
+      height: 100vh;
       display: flex;
       flex-direction: column;
       border-right: 1px solid rgba(201,169,110,0.12);
@@ -305,7 +306,7 @@
       flex: 1;
       padding: 32px 36px;
       min-height: 100vh;
-      overflow-y: auto;
+      overflow-x: hidden;
     }
     .page-header {
       display: flex;
@@ -777,8 +778,7 @@
       user-select: none;
     }
     .sidebar-toggle:hover { background: var(--gold2); transform: scale(1.1); }
-    .main { transition: margin-left 0.25s cubic-bezier(.4,0,.2,1); }
-    .main.collapsed { margin-left: var(--sidebar-collapsed) !important; }
+    .main { transition: padding-left 0.05s; }
     .client-row { cursor: pointer; transition: background 0.15s; }
     .client-row:hover td { background: rgba(201,169,110,0.05); }
     .sidebar.collapsed .nav-item { position: relative; }
@@ -870,7 +870,7 @@ const FB = () => window.__FB__;
 // ── MOCK DATA ────────────────────────────────────────
 const MOCK_CLIENTS = [
   {
-    id: 'mock-1', nombre: 'TechSolutions S.R.L.', tipo: 'empresa',
+    id: 'mock-1', nombre: 'TechSolutions S.R.L.', tipo: 'sociedad',
     cuit: '30-71234567-8', email: 'admin@techsolutions.com.ar',
     telefono: '+54 11 4521-8890', responsable: 'Lucas Martínez',
     servicio: 'Pack Integral (Fiscal+Laboral)',
@@ -881,7 +881,7 @@ const MOCK_CLIENTS = [
     claves: { arca_usuario:'30-71234567-8', arca_clave:'TechAFIP2026', arba_usuario:'techsolutions', arba_clave:'ArbaPass01', muni_usuario:'', muni_clave:'' }
   },
   {
-    id: 'mock-2', nombre: 'Valentina Rodríguez', tipo: 'persona_fisica',
+    id: 'mock-2', nombre: 'Valentina Rodríguez', tipo: 'responsable_inscripto',
     cuit: '27-35678912-4', email: 'vale.rodriguez@gmail.com',
     telefono: '+54 221 555-2341', responsable: '',
     servicio: 'Asesoría Fiscal (Personas)',
@@ -979,6 +979,32 @@ function LoginScreen({ onLogin }) {
 }
 
 // ── MODAL WRAPPER ────────────────────────────────────
+// ── EXCEL EXPORT UTILITY ─────────────────────────────
+function exportToExcel(rows, filename = 'export') {
+  if (!rows || !rows.length) { alert('No hay datos para exportar'); return; }
+  const headers = Object.keys(rows[0]);
+  const sep = '	';
+  const lines = [
+    headers.join(sep),
+    ...rows.map(r => headers.map(h => {
+      const v = r[h] ?? '';
+      // Quote cells that contain tabs or newlines
+      const s = String(v);
+      return s.includes('	') || s.includes('
+') ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(sep))
+  ];
+  const content = '﻿' + lines.join('
+'); // BOM for Excel UTF-8
+  const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${filename}_${todayStr}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function Modal({ title, onClose, children, footer }) {
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -1018,9 +1044,12 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           <div className="page-title">Buenos días ☀️</div>
           <div className="page-subtitle">{dayName}, {dateDisplay} · Todo listo para arrancar</div>
         </div>
-        <div className="page-date">
+        <div className="page-date" style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end'}}>
           <div style={{fontWeight:700, color:'var(--black)', fontSize:14}}>{activeClients.length} clientes activos</div>
-          <div>Sistema actualizado</div>
+          <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={()=>exportToExcel(
+            clients.map(c=>({'Cliente':c.nombre,'Tipo':c.tipo,'Honorario':c.honorario,'Saldo':c.saldoPendiente,'Estado':c.estado})),
+            'Dashboard_Clientes'
+          )}>📥 Exportar Excel</button>
         </div>
       </div>
 
@@ -1147,11 +1176,12 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
             </thead>
             <tbody>
               {clients.slice(0,6).map(c => (
-                <tr key={c.id}>
-                  <td style={{fontWeight:600}}>{c.nombre}</td>
+                <tr key={c.id} style={{cursor:'pointer'}} title="Ver detalle del cliente"
+                  onClick={()=>{ setSection('clientes'); setTimeout(()=>window.__openClient&&window.__openClient(c.id),100); }}>
+                  <td style={{fontWeight:600,color:'var(--black)'}}>{c.nombre}</td>
                   <td>
-                    <span className={`badge ${c.tipo === 'empresa' ? 'badge-blue' : c.tipo === 'monotributista' ? 'badge-gold' : 'badge-gray'}`}>
-                      {c.tipo === 'empresa' ? '🏢 Empresa' : c.tipo === 'monotributista' ? '📋 Monotributo' : '👤 Persona'}
+                    <span className={`badge ${c.tipo === 'sociedad' ? 'badge-blue' : c.tipo === 'responsable_inscripto' ? 'badge-amber' : c.tipo === 'monotributista' ? 'badge-gold' : 'badge-gray'}`}>
+                      {c.tipo === 'sociedad' ? '🏢 Sociedad' : c.tipo === 'responsable_inscripto' ? '📊 Resp. Inscripto' : c.tipo === 'monotributista' ? '📋 Monotributo' : '🔵 Exento'}
                     </span>
                   </td>
                   <td style={{fontSize:13}}>{c.servicio}</td>
@@ -1339,7 +1369,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   };
 
   const openNew = () => {
-    setForm({ tipo:'persona_fisica', estado:'activo', honorario:'', saldoPendiente:0, tributos:[],
+    setForm({ tipo:'monotributista', estado:'activo', honorario:'', saldoPendiente:0, tributos:[],
       claves:{ arca_usuario:'', arca_clave:'', arba_clave:'', muni_clave:'' }
     });
     setFormTab('datos'); setCuitError(''); setShowPass({}); setView('new');
@@ -1355,6 +1385,15 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
     setFormTab('datos'); setCuitError(''); setShowPass({}); setView('edit');
   };
   const openDetail = (c) => { setSelected(c); setDetailTab('info'); setView('detail'); };
+
+  // Expose openDetail for cross-component navigation (used by Dashboard)
+  React.useEffect(() => {
+    window.__openClient = (clientId) => {
+      const c = clients.find(x => x.id === clientId);
+      if (c) openDetail(c);
+    };
+    return () => { window.__openClient = null; };
+  }, [clients]);
   const backToList = () => setView('list');
 
   // auto-generate vencimientos for new client based on assigned tributos
@@ -1400,7 +1439,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
     if (!form.nombre || cuitError) return;
     setSaving(true);
     const payload = {
-      nombre: form.nombre||'', tipo: form.tipo||'persona_fisica',
+      nombre: form.nombre||'', tipo: form.tipo||'monotributista',
       cuit: form.cuit||'', email: form.email||'', telefono: form.telefono||'',
       responsable: form.responsable||'', domicilio: form.domicilio||'',
       servicio: form.servicio||'', honorario: Number(form.honorario||0),
@@ -1498,10 +1537,11 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
               </div>
               <div className="form-group">
                 <label className="form-label">Tipo de Cliente</label>
-                <select className="form-select" value={form.tipo||'persona_fisica'} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
-                  <option value="persona_fisica">👤 Persona Física</option>
+                <select className="form-select" value={form.tipo||'monotributista'} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+                  <option value="sociedad">🏢 Sociedad</option>
+                  <option value="responsable_inscripto">📊 Responsable Inscripto</option>
                   <option value="monotributista">📋 Monotributista</option>
-                  <option value="empresa">🏢 Empresa / S.R.L.</option>
+                  <option value="exento">🔵 Exento</option>
                 </select>
               </div>
             </div>
@@ -1695,8 +1735,8 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             <div>
               <div className="page-title" style={{fontSize:26}}>{c.nombre}</div>
               <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
-                <span className={`badge ${c.tipo==='empresa'?'badge-blue':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>
-                  {c.tipo==='empresa'?'🏢 Empresa':c.tipo==='monotributista'?'📋 Mono':'👤 PF'}
+                <span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>
+                  {c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}
                 </span>
                 <span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`}>{c.estado}</span>
                 {c.cuit && <span style={{fontSize:12,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{c.cuit}</span>}
@@ -1739,7 +1779,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             </div>
             <div className="card">
               <div className="card-title"><span>💼</span> Datos Comerciales</div>
-              {[['Servicio',c.servicio||'-'],['Estado',c.estado],['Empleados',c.empleados>0?c.empleados:'-'],['Tipo',c.tipo==='empresa'?'Empresa':c.tipo==='monotributista'?'Monotributista':'Persona Física']].map(([k,v])=>(
+              {[['Servicio',c.servicio||'-'],['Estado',c.estado],['Empleados',c.empleados>0?c.empleados:'-'],['Tipo',c.tipo==='sociedad'?'Sociedad':c.tipo==='responsable_inscripto'?'Resp. Inscripto':c.tipo==='monotributista'?'Monotributista':'Exentona Física']].map(([k,v])=>(
                 <div key={k} style={{padding:'8px 0',borderBottom:'1px solid var(--cream2)'}}>
                   <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:2}}>{k}</div>
                   <div style={{fontSize:14,fontWeight:500}}>{v}</div>
@@ -1829,7 +1869,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          {[['todos','Todos'],['persona_fisica','Personas'],['monotributista','Monotributo'],['empresa','Empresas'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
+          {[['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
             <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
           ))}
         </div>
@@ -1857,7 +1897,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
                         </div>
                       </td>
                       <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gray)'}}>{c.cuit||'—'}</td>
-                      <td><span className={`badge ${c.tipo==='empresa'?'badge-blue':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='empresa'?'🏢 Empresa':c.tipo==='monotributista'?'📋 Mono':'👤 PF'}</span></td>
+                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
                       <td style={{fontSize:12,color:'var(--gray)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
                       <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} tributo{(c.tributos||[]).length>1?'s':''}</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
                       <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
@@ -1998,9 +2038,15 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
           <div className="page-title">Cobros</div>
           <div className="page-subtitle">Registrá cobros y generá recibos · {cobros.length} registros</div>
         </div>
-        <button className="btn btn-gold" onClick={()=>{ setEditItem(null); setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''}); setModal(true); }}>
-          + Registrar Cobro
-        </button>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
+            filtered.map(c=>({'N° Recibo':c.nroRecibo||'','Fecha':c.fecha,'Cliente':c.cliente,'Naturaleza':c.naturaleza,'Medio':c.medio+(c.submedio?' · '+c.submedio:''),'Monto':c.monto,'Notas':c.notas||''})),
+            'Cobros'
+          )}>📥 Excel</button>
+          <button className="btn btn-gold" onClick={()=>{ setEditItem(null); setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''}); setModal(true); }}>
+            + Registrar Cobro
+          </button>
+        </div>
       </div>
 
       {clientesConDeuda.length>0 && (
@@ -2348,7 +2394,11 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
           <div className="page-subtitle">Calendario fiscal · {MONTHS_FULL[calMonth]} {calYear}</div>
         </div>
         <div style={{display:'flex',gap:10}}>
-          <button className="btn btn-ghost btn-sm" onClick={()=>setShowImport(true)}>📥 Importar</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
+            vencimientos.map(v=>({'Descripción':v.nombre,'Fecha':v.fecha,'Tipo':v.tipo||'','Cliente':v.clientes||'','Prioridad':v.prioridad||'','Estado':v.completado?'Completado':'Pendiente'})),
+            'Vencimientos'
+          )}>📥 Excel</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setShowImport(true)}>📋 Importar</button>
           <button className="btn btn-gold" onClick={openNew}>+ Nuevo Vencimiento</button>
         </div>
       </div>
@@ -2664,23 +2714,63 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
 
 
 // ── FINANZAS ──────────────────────────────────────────
-function Finanzas({ cobros, facturas }) {
-  const [mesFilter, setMesFilter] = useState(todayStr.slice(0,7)); // 'YYYY-MM'
+function Finanzas({ cobros, setCobros, facturas, setFacturas }) {
+  const [mesFilter, setMesFilter] = useState(todayStr.slice(0,7));
+  const [editMov, setEditMov]     = useState(null);
+  const [editForm, setEditForm]   = useState({});
 
   const allMovimientos = [
     ...cobros.map(c=>({...c, _tipo:'cobro', _color:'var(--green)'})),
-    ...facturas.filter(f=>f.estado==='cobrado').map(f=>({
-      id:f.id, fecha:f.fecha, cliente:f.cliente, monto:f.monto,
+    ...facturas.filter(f=>f.estado==='facturado').map(f=>({
+      id:f.id, fecha:f.fecha, cliente:f.cliente||f.clienteNombre, monto:f.monto,
       naturaleza:f.concepto, medio:'—', _tipo:'factura', _color:'var(--blue)',
     })),
   ].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
 
   const filtered = mesFilter
-    ? allMovimientos.filter(m=>m.fecha && m.fecha.startsWith(mesFilter))
+    ? allMovimientos.filter(m=>m.fecha&&m.fecha.startsWith(mesFilter))
     : allMovimientos;
 
-  const totalMes    = filtered.reduce((s,m)=>s+(m.monto||0),0);
+  const totalMes  = filtered.reduce((s,m)=>s+(Number(m.monto)||0),0);
   const soloMeses = [...new Set(allMovimientos.map(m=>m.fecha?.slice(0,7)).filter(Boolean))].sort().reverse();
+
+  const handleDelete = async (mov) => {
+    if (!confirm(`¿Eliminar este movimiento de ${fmt(mov.monto)}? Esta acción no se puede deshacer.`)) return;
+    if (mov._tipo === 'cobro') {
+      try { await FB().deleteDoc(FB().doc(FB().db,'cobros',mov.id)); } catch(e){}
+      setCobros(prev=>prev.filter(c=>c.id!==mov.id));
+    } else {
+      try { await FB().updateDoc(FB().doc(FB().db,'facturas',mov.id),{estado:'pendiente'}); } catch(e){}
+      setFacturas(prev=>prev.map(f=>f.id===mov.id?{...f,estado:'pendiente'}:f));
+    }
+  };
+
+  const openEdit = (mov) => {
+    setEditMov(mov);
+    setEditForm({ monto: mov.monto, fecha: mov.fecha, naturaleza: mov.naturaleza||mov.concepto||'' });
+  };
+
+  const saveEdit = async () => {
+    if (!editMov) return;
+    const changes = { monto: Number(editForm.monto), fecha: editForm.fecha, naturaleza: editForm.naturaleza };
+    if (editMov._tipo === 'cobro') {
+      try { await FB().updateDoc(FB().doc(FB().db,'cobros',editMov.id),{...changes}); } catch(e){}
+      setCobros(prev=>prev.map(c=>c.id===editMov.id?{...c,...changes}:c));
+    } else {
+      try { await FB().updateDoc(FB().doc(FB().db,'facturas',editMov.id),{monto:changes.monto,fecha:changes.fecha,concepto:changes.naturaleza}); } catch(e){}
+      setFacturas(prev=>prev.map(f=>f.id===editMov.id?{...f,monto:changes.monto,fecha:changes.fecha,concepto:changes.naturaleza}:f));
+    }
+    setEditMov(null);
+  };
+
+  const exportXLS = () => exportToExcel(
+    filtered.map(m=>({
+      'Fecha': m.fecha, 'Cliente': m.cliente||m.clienteNombre, 'Concepto': m.naturaleza,
+      'Medio': m.medio&&m.medio!=='—'?m.medio+(m.submedio?' · '+m.submedio:''):'—',
+      'Tipo': m._tipo==='cobro'?'Cobro':'Factura', 'Monto': m.monto,
+    })),
+    `Finanzas_${mesFilter||'historico'}`
+  );
 
   return (
     <div>
@@ -2689,21 +2779,19 @@ function Finanzas({ cobros, facturas }) {
           <div className="page-title">Finanzas</div>
           <div className="page-subtitle">Libro de ingresos · todos los movimientos</div>
         </div>
+        <button className="btn btn-ghost btn-sm" onClick={exportXLS}>📥 Exportar Excel</button>
       </div>
 
       <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
-        <div className="stat-card">
-          <div className="stat-icon">💰</div>
+        <div className="stat-card"><div className="stat-icon">💰</div>
           <div className="stat-label">Ingresos {mesFilter||'histórico'}</div>
           <div className="stat-value gold">{fmtShort(totalMes)}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon">🧾</div>
+        <div className="stat-card"><div className="stat-icon">🧾</div>
           <div className="stat-label">Movimientos</div>
           <div className="stat-value">{filtered.length}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon">📊</div>
+        <div className="stat-card"><div className="stat-icon">📊</div>
           <div className="stat-label">Promedio por cobro</div>
           <div className="stat-value">{filtered.length>0?fmtShort(totalMes/filtered.length):'—'}</div>
         </div>
@@ -2712,7 +2800,7 @@ function Finanzas({ cobros, facturas }) {
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Período:</span>
         <button className={`btn btn-sm ${!mesFilter?'btn-primary':'btn-ghost'}`} onClick={()=>setMesFilter('')}>Todos</button>
-        {soloMeses.slice(0,6).map(m=>(
+        {soloMeses.slice(0,8).map(m=>(
           <button key={m} className={`btn btn-sm ${mesFilter===m?'btn-primary':'btn-ghost'}`} onClick={()=>setMesFilter(m)}>
             {MONTHS_FULL[parseInt(m.slice(5,7))-1]} {m.slice(0,4)}
           </button>
@@ -2724,19 +2812,23 @@ function Finanzas({ cobros, facturas }) {
           <table>
             <thead><tr>
               <th>Fecha</th><th>Cliente</th><th>Concepto</th>
-              <th>Medio</th><th>Tipo</th><th style={{textAlign:'right'}}>Monto</th>
+              <th>Medio</th><th>Tipo</th><th style={{textAlign:'right'}}>Monto</th><th></th>
             </tr></thead>
             <tbody>
               {filtered.length===0
-                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">📊</div><p>Sin movimientos en este período</p></div></td></tr>
+                ? <tr><td colSpan={7}><div className="empty-state"><div className="empty-icon">📊</div><p>Sin movimientos en este período</p></div></td></tr>
                 : filtered.map(m=>(
                   <tr key={m.id+m._tipo}>
                     <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,whiteSpace:'nowrap'}}>{fmtDate(m.fecha)}</td>
-                    <td style={{fontWeight:600,fontSize:13}}>{m.cliente}</td>
+                    <td style={{fontWeight:600,fontSize:13}}>{m.cliente||m.clienteNombre}</td>
                     <td style={{fontSize:13,color:'var(--gray)'}}>{m.naturaleza}</td>
                     <td style={{fontSize:12}}>{m.medio&&m.medio!=='—'?m.medio+(m.submedio?' · '+m.submedio:''):'—'}</td>
                     <td><span className={`badge ${m._tipo==='cobro'?'badge-green':'badge-blue'}`} style={{fontSize:9}}>{m._tipo==='cobro'?'💰 Cobro':'🧾 Factura'}</span></td>
                     <td style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:m._color}}>{fmt(m.monto)}</td>
+                    <td><div className="action-btns">
+                      <button className="btn-icon edit" title="Editar" onClick={()=>openEdit(m)}>✏️</button>
+                      <button className="btn-icon trash" title="Eliminar / revertir" onClick={()=>handleDelete(m)}>🗑️</button>
+                    </div></td>
                   </tr>
                 ))
               }
@@ -2744,6 +2836,32 @@ function Finanzas({ cobros, facturas }) {
           </table>
         </div>
       </div>
+
+      {editMov && (
+        <Modal title="✏️ Editar Movimiento" onClose={()=>setEditMov(null)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setEditMov(null)}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={saveEdit}>Guardar Cambios</button>
+          </>}>
+          <div style={{padding:'8px 12px',background:'var(--cream2)',borderRadius:'var(--r2)',fontSize:12,color:'var(--gray)',marginBottom:12}}>
+            {editMov._tipo==='cobro'?'💰 Cobro registrado':'🧾 Factura'} · {editMov.cliente||editMov.clienteNombre}
+          </div>
+          <div className="form-group">
+            <label className="form-label">Concepto</label>
+            <input className="form-input" value={editForm.naturaleza||''} onChange={e=>setEditForm(f=>({...f,naturaleza:e.target.value}))} />
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Monto (ARS)</label>
+              <input className="form-input" type="number" value={editForm.monto||''} onChange={e=>setEditForm(f=>({...f,monto:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fecha</label>
+              <input className="form-input" type="date" value={editForm.fecha||''} onChange={e=>setEditForm(f=>({...f,fecha:e.target.value}))} />
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2969,6 +3087,10 @@ function Tareas({ tareas, setTareas, clients }) {
           <div className="page-title">Tareas</div>
           <div className="page-subtitle">{tareas.filter(t => !t.completado).length} tareas pendientes</div>
         </div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
+          shown.map(t=>({'Tarea':t.texto,'Cliente':t.cliente||'','Estado':t.completado?'Completada':'Pendiente','Fecha':t.fecha})),
+          'Tareas'
+        )}>📥 Excel</button>
       </div>
 
       <div className="card" style={{marginBottom:20}}>
@@ -3079,6 +3201,10 @@ function Notas({ notas, setNotas, clients }) {
           <div className="page-title">Notas & Anotaciones</div>
           <div className="page-subtitle">Registros rápidos y observaciones</div>
         </div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
+          notas.map(n=>({'Texto':n.texto,'Cliente':n.cliente||'','Fecha':n.fecha})),
+          'Notas'
+        )}>📥 Excel</button>
       </div>
 
       <div className="card" style={{marginBottom:24}}>
@@ -3566,7 +3692,7 @@ function App() {
       case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
       case 'notas':        return <Notas notas={notas} setNotas={setNotas} clients={clients} />;
       case 'cobros':       return <Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
-      case 'finanzas':     return <Finanzas cobros={cobros} facturas={facturas} />;
+      case 'finanzas':     return <Finanzas cobros={cobros} setCobros={setCobros} facturas={facturas} setFacturas={setFacturas} />;
       default:             return null;
     }
   };
