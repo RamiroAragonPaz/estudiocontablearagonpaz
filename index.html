@@ -890,10 +890,7 @@ const initials = (name) => {
 const FB = () => window.__FB__;
 
 // ── MOCK DATA ────────────────────────────────────────
-const MOCK_CLIENTS = [];
 
-const CALENDARIO_2026 = [];
-// Vencimientos se cargan desde Firestore
 
 // ── GOOGLE ICON ──────────────────────────────────────
 const GoogleIcon = () => (
@@ -1550,7 +1547,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             <div className="form-grid-2">
               <div className="form-group">
                 <label className="form-label">Nombre / Razón Social *</label>
-                <input className="form-input" value={form.nombre||''} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Juan García / TechSolutions S.R.L." autoFocus />
+                <input className="form-input" value={form.nombre||''} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Ej: Juan García" autoFocus />
               </div>
               <div className="form-group">
                 <label className="form-label">Tipo de Cliente</label>
@@ -2219,12 +2216,113 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
   const [modal,    setModal]    = useState(null);
   const [form,     setForm]     = useState({});
   const [selVenc,  setSelVenc]  = useState(null);
-  const [showImport, setShowImport] = useState(false);
+  const [showImport, setShowImport]       = useState(false);
+  const [vencDetail, setVencDetail]       = useState(null); // grupo para modal detalle
+  const [debugDay, setDebugDay]           = useState(null); // debug modal
 
   // helpers
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
   const firstDow    = (y,m) => new Date(y, m, 1).getDay(); // 0=Sun
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+  // ── Match vencimiento → clientes que tienen ese tributo ─────
+  // ═══════════════════════════════════════════════════════════
+  // MATCHING: vencimiento → clientes afectados
+  //
+  // Regla única y simple:
+  //   1. Detectar qué tributo corresponde al nombre del vencimiento
+  //   2. Si tiene rango CUIT en el nombre → filtrar por penúltimo dígito del CUIT
+  //   3. El cliente DEBE tener ese tributo id en su array tributos[]
+  //   4. Nunca inferir — si no está en tributos[], no aplica
+  // ═══════════════════════════════════════════════════════════
+
+  // Mapeo nombre del vencimiento → id del tributo en el catálogo
+  const TRIBUTO_KEYWORDS = [
+    { id: 'recat_mono',  words: ['recategori'] },
+    { id: 'monotributo', words: ['monotributo'] },
+    { id: 'autonomos',   words: ['autónomos', 'autonomos'] },
+    { id: 'ganancias',   words: ['ganancias'] },
+    { id: 'iibb_cm',     words: ['convenio multilateral', 'multilateral', 'cm0'] },
+    { id: 'iibb_anual',  words: ['iibb', 'ingresos brutos'], extra: n => n.includes('anual') },
+    { id: 'iibb',        words: ['iibb', 'ingresos brutos'] },
+    { id: 'iva',         words: ['iva'] },
+    { id: 'f931',        words: ['f.931', 'f931', 'suss', 'siradig', 'f572'] },
+    { id: 'bienes_pers', words: ['bienes personales'] },
+    { id: 'imp_sellos',  words: ['sellos'] },
+    { id: 'imp_inmob',   words: ['inmobiliario'] },
+    { id: 'automotores', words: ['automotor', 'patente'] },
+    { id: 'sueldos',     words: ['sueldo', 'remuneracion', 'remuneración'] },
+  ];
+
+  const getTributoId = (nombre) => {
+    const n = (nombre || '').toLowerCase();
+    for (const entry of TRIBUTO_KEYWORDS) {
+      if (entry.extra && !entry.extra(n)) continue;
+      if (entry.words.some(w => n.includes(w))) return entry.id;
+    }
+    return null;
+  };
+
+  // Extrae el rango de terminación CUIT del nombre del vencimiento
+  // "CUIT term. 0-3" → [0,1,2,3]   |   sin rango → null
+  const getCuitRange = (nombre) => {
+    const m = (nombre || '').match(/CUIT[^0-9]*term[^0-9]*(\d)\s*[-–y]\s*(\d)/i);
+    if (!m) return null;
+    const from = parseInt(m[1]), to = parseInt(m[2]);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  };
+
+  // Penúltimo dígito del CUIT (el que usa AFIP para escalonar vencimientos)
+  // CUIT 20-12345678-9 → sin guiones: 20123456789 → penúltimo: 8
+  const getCuitDigit = (cuit) => {
+    const limpio = (cuit || '').replace(/[-\s]/g, '');
+    if (limpio.length < 2) return NaN;
+    return parseInt(limpio[limpio.length - 2]);
+  };
+
+  // Retorna los clientes que aplican a un vencimiento individual
+  const getClientesDelVenc = (v) => {
+    const tributeId = getTributoId(v.nombre);
+    if (!tributeId) return { matched: [], fallbackText: v.clientes || null };
+
+    const cuitRange = getCuitRange(v.nombre);
+
+    const matched = clients.filter(c => {
+      if (c.estado === 'inactivo') return false;
+      // Tributo explícito requerido
+      const tiene = Array.isArray(c.tributos) && c.tributos.some(t => t.id === tributeId);
+
+      if (!tiene) return false;
+      // Con rango CUIT: validar penúltimo dígito
+      if (cuitRange) {
+        const d = getCuitDigit(c.cuit);
+
+        return !isNaN(d) && cuitRange.includes(d);
+      }
+      return true;
+    });
+
+    return {
+      matched,
+      fallbackText: matched.length === 0 ? (v.clientes || null) : null
+    };
+  };
+
+  // Para un GRUPO (varios vencimientos con mismo nombre base):
+  // llama getClientesDelVenc por cada item y deduplica
+  const getClientesDelGrupo = (grupo) => {
+    const map = new Map();
+    let fallback = null;
+    grupo.items.forEach(v => {
+      const { matched, fallbackText } = getClientesDelVenc(v);
+      matched.forEach(c => map.set(c.id, c));
+      if (fallbackText && !fallback) fallback = fallbackText;
+    });
+    const matched = [...map.values()];
+    return { matched, fallbackText: matched.length === 0 ? fallback : null };
+  };
+
+
 
   const prevMonth = () => {
     if (calMonth === 0) { setCalYear(y=>y-1); setCalMonth(11); }
@@ -2249,6 +2347,44 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
     const v = vencimientos.find(x=>x.id===id);
     try { await FB().updateDoc(FB().doc(FB().db,'vencimientos',id),{completado:!v.completado}); } catch(e) {}
     setVencimientos(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
+  };
+
+  // Marcar completado/pendiente un grupo entero de vencimientos
+  const toggleGroup = async (ids, nuevoEstado) => {
+    const fb = FB();
+    await Promise.all(ids.map(id =>
+      fb.updateDoc(fb.doc(fb.db,'vencimientos',id),{completado:nuevoEstado}).catch(()=>{})
+    ));
+    setVencimientos(prev=>prev.map(x=>ids.includes(x.id)?{...x,completado:nuevoEstado}:x));
+  };
+
+  // Agrupar vencimientos de un día en tarjetas únicas por "nombre base"
+  // Ej: "IVA Enero 2026 — CUIT term. 0-1" y "IVA Enero 2026 — CUIT term. 2-3"
+  //     → grupo "IVA Enero 2026" con todos sus docs
+  const groupVenc = (vencList) => {
+    const grupos = {};
+    vencList.forEach(v => {
+      // Nombre base: quitar sufijo " — CUIT term. X-X" o similar
+      const base = v.nombre
+        .replace(/\s*[—–-]+\s*CUIT\s+term[^$]*/i, '')
+        .replace(/\s*[—–-]+\s*CUIT\s+terminaci[^$]*/i, '')
+        .trim();
+      // Agrupar por base + fecha para no mezclar días distintos
+      const key = base + '||' + v.fecha;
+      if (!grupos[key]) {
+        grupos[key] = { base, items: [], tipo: v.tipo, prioridad: v.prioridad, fecha: v.fecha };
+      }
+      grupos[key].items.push(v);
+    });
+    // Ordenar: por fecha, luego pendientes primero, luego nombre
+    return Object.values(grupos).sort((a,b) => {
+      const fechaDiff = new Date(a.fecha) - new Date(b.fecha);
+      if (fechaDiff !== 0) return fechaDiff;
+      const aPend = a.items.some(x=>!x.completado);
+      const bPend = b.items.some(x=>!x.completado);
+      if (aPend !== bPend) return aPend ? -1 : 1;
+      return a.base.localeCompare(b.base);
+    });
   };
 
   // Compute date for Nth weekday in a month
@@ -2506,6 +2642,15 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
                   {dayVenc.length === 0 ? 'Sin vencimientos' :
                    `${dayVenc.filter(v=>!v.completado).length} pendiente${dayVenc.filter(v=>!v.completado).length!==1?'s':''}`}
                 </div>
+                {dayVenc.length > 0 && (
+                  <button
+                    onClick={()=>setDebugDay(selDate)}
+                    style={{marginTop:6,padding:'2px 8px',fontSize:9,background:'rgba(255,255,255,0.15)',
+                      border:'1px solid rgba(255,255,255,0.3)',borderRadius:4,color:'white',cursor:'pointer',
+                      fontFamily:'monospace'}}>
+                    🔍 debug
+                  </button>
+                )}
               </div>
               <button className="btn btn-gold btn-sm" onClick={openNew} style={{fontSize:12}}>+ Agregar</button>
             </div>
@@ -2517,76 +2662,176 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
                   <p>Sin vencimientos para este día</p>
                 </div>
               ) : (
-                dayVenc.map(v => {
-                  const days = daysUntil(v.fecha);
-                  return (
-                    <div key={v.id} style={{
-                      padding:'12px 14px',borderRadius:10,marginBottom:8,
-                      background: v.completado ? 'var(--cream)' : days<=7 ? 'rgba(192,57,43,0.06)' : 'var(--cream)',
-                      border: v.completado ? '1px solid var(--cream2)' :
-                              days<=7 ? '1px solid rgba(192,57,43,0.2)' : '1px solid rgba(201,169,110,0.15)',
-                      opacity: v.completado ? 0.7 : 1,
-                    }}>
-                      <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
-                        <div className={`task-check ${v.completado?'done':''}`}
-                          onClick={()=>toggle(v.id)} style={{marginTop:2,flexShrink:0}} />
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
-                            textDecoration:v.completado?'line-through':'none',lineHeight:1.3}}>
-                            {v.nombre}
+                (() => {
+                  const grupos = groupVenc(dayVenc);
+                  return grupos.map(grupo => {
+                    const ids   = grupo.items.map(x=>x.id);
+                    const allDone  = grupo.items.every(x=>x.completado);
+                    const someDone = grupo.items.some(x=>x.completado) && !allDone;
+                    const days     = daysUntil(grupo.fecha);
+                    const { matched: cMatch } = getClientesDelGrupo(grupo);
+
+                    return (
+                      <div key={grupo.base+'||'+grupo.fecha} style={{
+                        padding:'12px 14px',borderRadius:10,marginBottom:8,
+                        background: allDone ? 'var(--cream)' : days<0 ? 'rgba(192,57,43,0.06)' : days<=3 ? 'rgba(192,57,43,0.04)' : 'rgba(201,169,110,0.04)',
+                        border: allDone ? '1px solid var(--cream2)' : days<0 ? '1px solid rgba(192,57,43,0.25)' : days<=3 ? '1px solid rgba(192,57,43,0.18)' : '1px solid rgba(201,169,110,0.2)',
+                        opacity: allDone ? 0.65 : 1,
+                      }}>
+                        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+
+                          {/* Checkbox grupo */}
+                          <div onClick={()=>toggleGroup(ids,!allDone)} style={{
+                            marginTop:2,flexShrink:0,width:16,height:16,borderRadius:4,
+                            border: allDone ? '2px solid var(--gold)' : someDone ? '2px solid var(--gold)' : '2px solid var(--gray3)',
+                            background: allDone ? 'var(--gold)' : someDone ? 'rgba(201,169,110,0.3)' : 'transparent',
+                            cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'
+                          }}>
+                            {allDone && <span style={{fontSize:10,color:'white',lineHeight:1}}>✓</span>}
+                            {someDone && <span style={{fontSize:10,color:'var(--gold)',lineHeight:1}}>–</span>}
                           </div>
-                          <div style={{display:'flex',gap:6,marginTop:5,flexWrap:'wrap',alignItems:'center'}}>
-                            {v.clientes && <span className="badge badge-gray" style={{fontSize:9}}>{v.clientes}</span>}
-                            <span className={`badge ${v.tipo==='fiscal'?'badge-blue':v.tipo==='laboral'?'badge-amber':'badge-gray'}`} style={{fontSize:9}}>{v.tipo||'otro'}</span>
-                            <span className={`badge ${v.prioridad==='alta'?'badge-red':v.prioridad==='media'?'badge-amber':'badge-gray'}`} style={{fontSize:9}}>{v.prioridad}</span>
+
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
+                              textDecoration:allDone?'line-through':'none',lineHeight:1.3}}>
+                              {grupo.base}
+                            </div>
+                            <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap',alignItems:'center'}}>
+                              <span className={`badge ${grupo.tipo==='fiscal'?'badge-blue':grupo.tipo==='laboral'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
+                                {grupo.tipo||'fiscal'}
+                              </span>
+                              <span className={`badge ${grupo.prioridad==='alta'?'badge-red':grupo.prioridad==='baja'?'badge-green':'badge-gold'}`} style={{fontSize:9}}>
+                                {grupo.prioridad||'media'}
+                              </span>
+                              {grupo.items.length > 1 && (
+                                <span className="badge badge-gray"
+                                  style={{fontSize:9,cursor:'pointer',textDecoration:'underline dotted'}}
+                                  onClick={e=>{e.stopPropagation();setVencDetail(grupo);}}>
+                                  {grupo.items.length} venc.
+                                </span>
+                              )}
+                            </div>
+
+                            {cMatch.length > 0 && (
+                              <div style={{marginTop:8,paddingTop:7,borderTop:'1px dashed var(--cream2)'}}>
+                                <div style={{fontSize:9,fontWeight:700,color:'var(--gray)',
+                                  textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:5}}>
+                                  {cMatch.length} cliente{cMatch.length!==1?'s':''} afectado{cMatch.length!==1?'s':''}
+                                </div>
+                                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                                  {cMatch.slice(0,8).map(c=>(
+                                    <span key={c.id} style={{
+                                      fontSize:10,padding:'2px 8px',borderRadius:20,
+                                      background:'rgba(201,169,110,0.12)',
+                                      color:'var(--black)',border:'1px solid rgba(201,169,110,0.35)',
+                                      fontWeight:500,whiteSpace:'nowrap',
+                                      maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'
+                                    }}>{c.nombre}</span>
+                                  ))}
+                                  {cMatch.length > 8 && (
+                                    <span style={{fontSize:10,color:'var(--gray)',padding:'2px 4px'}}>
+                                      +{cMatch.length-8} más
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                        <div style={{display:'flex',gap:4,flexShrink:0}}>
-                          <button className="btn btn-ghost btn-sm btn-icon" style={{width:28,height:28,padding:0,fontSize:12}}
-                            onClick={()=>openEdit(v)}>✏️</button>
-                          <button className="btn btn-danger btn-sm btn-icon" style={{width:28,height:28,padding:0,fontSize:12}}
-                            onClick={()=>handleDelete(v.id)}>🗑️</button>
+
+                          <div style={{display:'flex',gap:4,flexShrink:0}}>
+                            <button className="btn btn-ghost btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
+                              onClick={()=>openEdit(grupo.items[0])}>✏️</button>
+                            <button className="btn btn-danger btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
+                              onClick={async()=>{
+                                const ok = await Swal.fire({
+                                  icon:'warning',title:'¿Eliminar vencimiento?',
+                                  text: grupo.items.length>1 ? 'Se eliminarán '+grupo.items.length+' registros agrupados.' : 'Se eliminará este vencimiento.',
+                                  showCancelButton:true,confirmButtonText:'Sí, eliminar',
+                                  cancelButtonText:'Cancelar',customClass:{popup:'swal-ap'}
+                                });
+                                if (!ok.isConfirmed) return;
+                                const fb = FB();
+                                await Promise.all(ids.map(id=>fb.deleteDoc(fb.doc(fb.db,'vencimientos',id)).catch(()=>{})));
+                                setVencimientos(prev=>prev.filter(x=>!ids.includes(x.id)));
+                              }}>🗑️</button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  });
+                })()
+              )}            </div>
           </div>
 
-          {/* Upcoming summary */}
+                    {/* Próximos 7 días — agrupados */}
           <div className="card" style={{marginTop:16,padding:16}}>
             <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
               letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:12}}>
               Próximos 7 días
             </div>
-            {vencimientos
-              .filter(v=>!v.completado && daysUntil(v.fecha)>=0 && daysUntil(v.fecha)<=7)
-              .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha))
-              .slice(0,5)
-              .map(v=>{
-                const d = new Date(v.fecha+'T12:00:00');
+            {(() => {
+              const proximos = vencimientos
+                .filter(v=>!v.completado && daysUntil(v.fecha)>=0 && daysUntil(v.fecha)<=7)
+                .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+              if (proximos.length===0) return (
+                <div style={{fontSize:12,color:'var(--green)',fontWeight:600}}>✓ Sin urgencias esta semana</div>
+              );
+              // Agrupar por nombre base + fecha
+              const grupos = groupVenc(proximos);
+              return grupos.map(grupo=>{
+                const d = new Date(grupo.fecha+'T12:00:00');
+                const { matched: pMatch, fallbackText: pFallback } = getClientesDelGrupo(grupo);
+                const ids = grupo.items.map(x=>x.id);
+                const allDone = grupo.items.every(x=>x.completado);
                 return (
-                  <div key={v.id} onClick={()=>setSelDate(v.fecha)}
-                    style={{display:'flex',gap:10,alignItems:'center',padding:'7px 0',
-                      borderBottom:'1px solid var(--cream2)',cursor:'pointer'}}>
-                    <div style={{width:32,height:32,borderRadius:8,background:'var(--red2)',
-                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                      <div style={{fontSize:14,fontWeight:700,color:'var(--red)',lineHeight:1}}>{d.getDate()}</div>
-                      <div style={{fontSize:8,color:'var(--red)',textTransform:'uppercase',fontFamily:'JetBrains Mono,monospace'}}>{MONTHS_ES[d.getMonth()]}</div>
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.nombre}</div>
-                      <div style={{fontSize:10,color:'var(--gray)'}}>{v.clientes||'General'}</div>
+                  <div key={grupo.base+grupo.fecha} onClick={()=>setSelDate(grupo.fecha)}
+                    style={{padding:'9px 0',borderBottom:'1px solid var(--cream2)',cursor:'pointer',
+                      opacity: allDone ? 0.5 : 1}}>
+                    <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                      <div style={{width:32,height:32,borderRadius:8,background:'var(--red2)',
+                        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                        flexShrink:0,marginTop:1}}>
+                        <div style={{fontSize:14,fontWeight:700,color:'var(--red)',lineHeight:1}}>{d.getDate()}</div>
+                        <div style={{fontSize:8,color:'var(--red)',textTransform:'uppercase',
+                          fontFamily:'JetBrains Mono,monospace'}}>{MONTHS_ES[d.getMonth()]}</div>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:600,overflow:'hidden',
+                          textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.3,
+                          textDecoration:allDone?'line-through':'none'}}>
+                          {grupo.base}
+                          {grupo.items.length > 1 &&
+                            <span style={{marginLeft:5,fontSize:10,color:'var(--gray)',fontWeight:400}}>
+                              ({grupo.items.length})
+                            </span>
+                          }
+                        </div>
+                        {pMatch.length > 0 ? (
+                          <div style={{marginTop:4,display:'flex',flexWrap:'wrap',gap:3}}>
+                            {pMatch.slice(0,4).map(c=>(
+                              <span key={c.id} style={{
+                                fontSize:9,padding:'1px 6px',borderRadius:20,
+                                background:'rgba(201,169,110,0.12)',
+                                color:'var(--black)',border:'1px solid rgba(201,169,110,0.3)',
+                                fontWeight:500,whiteSpace:'nowrap',
+                                maxWidth:110,overflow:'hidden',textOverflow:'ellipsis'
+                              }}>{c.nombre}</span>
+                            ))}
+                            {pMatch.length > 4 && (
+                              <span style={{fontSize:9,color:'var(--gray)',padding:'1px 3px'}}>
+                                +{pMatch.length-4}
+                              </span>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );
-              })}
-            {vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)>=0&&daysUntil(v.fecha)<=7).length===0 && (
-              <div style={{fontSize:12,color:'var(--green)',fontWeight:600}}>✓ Sin urgencias esta semana</div>
-            )}
+              });
+            })()}
           </div>
+
         </div>
       </div>
 
@@ -2722,6 +2967,174 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
               placeholder="Detalles adicionales..." style={{minHeight:60}} />
           </div>
         </Modal>
+      )}
+
+      {/* ── MODAL DETALLE DE VENCIMIENTOS AGRUPADOS ── */}
+      {vencDetail && (
+        <Modal
+          title={`📋 ${vencDetail.base} — ${fmtDate(vencDetail.fecha)}`}
+          onClose={()=>setVencDetail(null)}
+          footer={
+            <button className="btn btn-ghost btn-sm" onClick={()=>setVencDetail(null)}>Cerrar</button>
+          }>
+          <div style={{marginBottom:14,padding:'10px 14px',background:'var(--cream2)',
+            borderRadius:8,fontSize:12,color:'var(--gray)'}}>
+            <strong>{vencDetail.items.length} registro{vencDetail.items.length!==1?'s':''}</strong> agrupados bajo este vencimiento.
+            El checkbox del panel completa/descompleta todos a la vez.
+          </div>
+
+          {/* Tabla de registros individuales */}
+          <div style={{border:'1px solid var(--cream2)',borderRadius:10,overflow:'hidden'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{background:'linear-gradient(135deg,var(--black),var(--black2))'}}>
+                  {['Estado','Nombre completo','CUIT/Clientes','Fecha','Prioridad'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:'left',color:'var(--cream)',
+                      fontWeight:600,fontSize:11,fontFamily:'JetBrains Mono,monospace'}}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vencDetail.items
+                  .sort((a,b)=>a.completado-b.completado || a.nombre.localeCompare(b.nombre))
+                  .map((v,i)=>{
+                    const { matched: cm } = getClientesDelVenc(v);
+                    return (
+                      <tr key={v.id} style={{
+                        borderTop:'1px solid var(--cream2)',
+                        background: v.completado ? 'var(--cream)' : i%2===0 ? 'white' : 'var(--cream3,#fdfcf9)',
+                        opacity: v.completado ? 0.6 : 1,
+                      }}>
+                        <td style={{padding:'8px 12px'}}>
+                          <div className={`task-check ${v.completado?'done':''}`}
+                            onClick={()=>toggle(v.id)}
+                            style={{cursor:'pointer'}} />
+                        </td>
+                        <td style={{padding:'8px 12px',fontWeight:v.completado?400:600,
+                          textDecoration:v.completado?'line-through':'none',color:'var(--black)'}}>
+                          {v.nombre}
+                        </td>
+                        <td style={{padding:'8px 12px'}}>
+                          {cm.length > 0 ? (
+                            <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                              {cm.map(c=>(
+                                <span key={c.id} style={{
+                                  fontSize:10,padding:'1px 6px',borderRadius:20,
+                                  background:'rgba(201,169,110,0.12)',
+                                  border:'1px solid rgba(201,169,110,0.3)',
+                                  color:'var(--black)',fontWeight:500
+                                }}>{c.nombre}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{color:'var(--gray)',fontSize:11,fontStyle:'italic'}}>
+                              {v.clientes || '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{padding:'8px 12px',fontFamily:'JetBrains Mono,monospace',
+                          fontSize:11,color:'var(--gray)',whiteSpace:'nowrap'}}>
+                          {v.fecha}
+                        </td>
+                        <td style={{padding:'8px 12px'}}>
+                          <span className={`badge ${v.prioridad==='alta'?'badge-red':v.prioridad==='baja'?'badge-green':'badge-gold'}`}
+                            style={{fontSize:9}}>
+                            {v.prioridad||'media'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Clientes totales afectados */}
+          {(() => {
+            const allMatched = [...new Map(
+              vencDetail.items.flatMap(v => getClientesDelVenc(v).matched)
+                .map(c=>[c.id,c])
+            ).values()];
+            if (!allMatched.length) return null;
+            return (
+              <div style={{marginTop:16,padding:'12px 14px',background:'rgba(201,169,110,0.08)',
+                border:'1px solid rgba(201,169,110,0.25)',borderRadius:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
+                  letterSpacing:'0.8px',marginBottom:8}}>
+                  {allMatched.length} cliente{allMatched.length!==1?'s':''} afectado{allMatched.length!==1?'s':''}
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                  {allMatched.map(c=>(
+                    <span key={c.id} style={{fontSize:11,padding:'3px 10px',borderRadius:20,
+                      background:'rgba(201,169,110,0.15)',border:'1px solid rgba(201,169,110,0.35)',
+                      color:'var(--black)',fontWeight:500}}>
+                      {c.nombre}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
+      )}
+
+      {/* ── DEBUG MODAL ── */}
+      {debugDay && (
+        <Modal title={'🔍 Debug matching — ' + debugDay} onClose={()=>setDebugDay(null)}
+          footer={<button className="btn btn-ghost btn-sm" onClick={()=>setDebugDay(null)}>Cerrar</button>}>
+          <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,lineHeight:1.8}}>
+            {(byDate[debugDay]||[]).map((v,i) => {
+              const tid = getTributoId(v.nombre);
+              const cr  = getCuitRange(v.nombre);
+              const todosConTributo = clients.filter(c =>
+                c.estado!=='inactivo' &&
+                Array.isArray(c.tributos) &&
+                c.tributos.some(t => t.id === tid)
+              );
+              const matchFinal = todosConTributo.filter(c => {
+                if (!cr) return true;
+                const d = getCuitDigit(c.cuit);
+                return !isNaN(d) && cr.includes(d);
+              });
+              return (
+                <div key={v.id} style={{marginBottom:16,padding:12,background:'var(--cream)',borderRadius:8,border:'1px solid var(--cream2)'}}>
+                  <div style={{fontWeight:700,marginBottom:6,color:'var(--black)'}}>{v.nombre}</div>
+                  <div><span style={{color:'var(--gray)'}}>tributeId:</span> <b style={{color:tid?'var(--green)':'var(--red)'}}>{tid||'⚠️ NO DETECTADO'}</b></div>
+                  <div><span style={{color:'var(--gray)'}}>CUIT range:</span> <b>{cr ? '['+cr.join(',')+']' : 'ninguno (todos los CUITs)'}</b></div>
+                  <div style={{marginTop:6}}><span style={{color:'var(--gray)'}}>Clientes con tributeId en tributos[]:</span></div>
+                  {todosConTributo.length === 0
+                    ? <div style={{color:'var(--red)',paddingLeft:12}}>⚠️ Ningún cliente tiene este tributo cargado</div>
+                    : todosConTributo.map(c => {
+                        const d = getCuitDigit(c.cuit);
+                        const pasaCuit = !cr || (!isNaN(d) && cr.includes(d));
+                        return (
+                          <div key={c.id} style={{paddingLeft:12,color:pasaCuit?'var(--green)':'var(--gray)'}}>
+                            {pasaCuit ? '✓' : '✗'} {c.nombre}
+                            {cr && <span style={{fontSize:10}}> (CUIT digit: {isNaN(d)?'sin CUIT':d})</span>}
+                          </div>
+                        );
+                      })
+                  }
+                  <div style={{marginTop:6,fontWeight:600,color:'var(--black)'}}>
+                    → Match final: {matchFinal.length > 0 ? matchFinal.map(c=>c.nombre).join(', ') : '(ninguno)'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── IMPORTAR VENCIMIENTOS MODAL ── */}
+      {showImport && (
+        <ImportarVencimientos
+          vencimientos={vencimientos}
+          setVencimientos={setVencimientos}
+          clients={clients}
+          onClose={()=>setShowImport(false)}
+        />
       )}
     </div>
   );
@@ -3302,69 +3715,75 @@ function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose 
     }).filter(r=>r.nombre&&r.fecha);
   };
 
-  // ── Parse ICS / iCalendar file ───────────────────────
+  // ── Parse ICS / iCalendar — RFC 5545 compliant ──────
   const parseICS = (text) => {
+    // 1. Normalize line endings and unfold continuation lines (RFC 5545 §3.1)
+    const unfolded = text
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/\n[ \t]/g, ''); // unfold: CRLF + SPACE/TAB = continuation
+
     const events = [];
-    const blocks = text.split('BEGIN:VEVENT');
+    const blocks = unfolded.split('BEGIN:VEVENT');
+
     blocks.slice(1).forEach(block => {
+      // Cut at END:VEVENT to avoid bleed into next event
+      const eventBlock = block.split('END:VEVENT')[0];
+
+      // Extract a property value — handles param syntax like DTSTART;TZID=...:value
       const getVal = (key) => {
-        const rx = new RegExp(key + '[^:]*:(.+)');
-        const m = block.match(rx);
-        return m ? m[1].replace(/\r/g,'').trim() : '';
+        const rx = new RegExp('^' + key + '(?:;[^:]*)?:(.+)$', 'm');
+        const m = eventBlock.match(rx);
+        return m ? m[1].trim() : '';
       };
+
       const summary  = getVal('SUMMARY');
       const dtstart  = getVal('DTSTART');
-      const desc     = getVal('DESCRIPTION');
+      const desc     = getVal('DESCRIPTION').replace(/\\n/g,' ').replace(/\\,/g,',');
       const location = getVal('LOCATION');
+
       if (!summary || !dtstart) return;
 
-      // Parse date — handles DTSTART:20260318 and DTSTART;TZID=...:20260318T000000
-      let dateStr = dtstart.replace(/T.*/, '');
-      if (dateStr.length === 8) {
-        dateStr = dateStr.slice(0,4)+'-'+dateStr.slice(4,6)+'-'+dateStr.slice(6,8);
+      // Parse date: handles 20260318, 20260318T000000, 20260318T000000Z
+      let raw = dtstart.replace(/Z$/, '').split('T')[0].replace(/-/g,'');
+      let dateStr = '';
+      if (raw.length === 8) {
+        dateStr = raw.slice(0,4)+'-'+raw.slice(4,6)+'-'+raw.slice(6,8);
+      } else {
+        return; // unparseable date, skip
       }
 
-      // Guess tipo from summary/description
-      const lowSum = (summary+desc).toLowerCase();
-      const tipo = lowSum.includes('sueldo')||lowSum.includes('f.931')||lowSum.includes('931')||lowSum.includes('art ')||lowSum.includes('laboral') ? 'laboral'
-        : lowSum.includes('societ')||lowSum.includes('balance')||lowSum.includes('igj') ? 'societario'
-        : 'fiscal';
+      // Classify tipo
+      const lowSum = (summary + ' ' + desc).toLowerCase();
+      const tipo =
+        /sueldo|f\.?931|\bsuss\b|cargas sociales|\bart\b|laboral/.test(lowSum) ? 'laboral' :
+        /societ|balance|igj|dppj/.test(lowSum) ? 'societario' :
+        'fiscal';
 
-      // Guess prioridad
-      const prioridad = lowSum.includes('iva')||lowSum.includes('ganancias')||lowSum.includes('arca')||lowSum.includes('suss')||lowSum.includes('bienes') ? 'alta' : 'media';
+      // Classify prioridad
+      const prioridad =
+        /\biva\b|ganancias|bienes personales|\barca\b|\bafip\b|suss|f\.?931/.test(lowSum)
+        ? 'alta' : 'media';
 
-      // Extract organismo hint
-      const org = lowSum.includes('arba') ? 'ARBA'
-        : lowSum.includes('arca')||lowSum.includes('afip') ? 'ARCA'
-        : lowSum.includes('art ') ? 'ART'
-        : '';
+      // Organismo hint for notas
+      const org =
+        /\barba\b/.test(lowSum) ? 'ARBA' :
+        /\barca\b|\bafip\b/.test(lowSum) ? 'ARCA' :
+        /\bart\b/.test(lowSum) ? 'ART' : '';
 
-      events.push({
-        nombre: summary,
-        tipo,
-        fecha: dateStr,
-        clientes: '',
-        prioridad,
-        notas: [desc,location,org].filter(Boolean).join(' · ').slice(0,200),
-      });
+      const notas = [desc, location, org].filter(Boolean).join(' · ').slice(0, 200);
+
+      events.push({ nombre: summary, tipo, fecha: dateStr, clientes: '', prioridad, notas });
     });
+
     return events;
   };
 
   // ── Smart CUIT client matching ───────────────────────
-  const smartMatchClients = (row) => {
-    const cl = (row.clientes||'').toLowerCase();
-    const digitMatch = cl.match(/(\d)\s*[-–oa]\s*(\d)/);
-    if (digitMatch) {
-      const lo = parseInt(digitMatch[1]), hi = parseInt(digitMatch[2]);
-      const range = []; for(let d=lo;d<=hi;d++) range.push(d);
-      return clients.filter(c => range.includes(parseInt((c.cuit||'').replace(/[-\s]/g,'').slice(-1))));
-    }
-    if (cl.includes('monotribut')) return clients.filter(c=>c.tipo==='monotributista');
-    if (cl.includes('todos')) return clients;
-    if (cl.includes('empleador')) return clients.filter(c=>c.empleados>0);
-    const exact = clients.filter(c=>c.nombre.toLowerCase().includes(cl));
-    return exact;
+  const smartMatchClients = (_row) => {
+    // El matching de clientes ocurre en tiempo real al mostrar vencimientos
+    // via getClientesDelVenc/getClientesDelGrupo — no durante la importación
+    return [];
   };
 
   // Build smart preview from CSV
@@ -3590,7 +4009,7 @@ function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose 
         <div>
           <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,marginBottom:12,fontSize:12,color:'#1e40af'}}>
             <strong>Formato:</strong> descripción, tipo (fiscal/laboral), fecha (YYYY-MM-DD), cliente, prioridad<br/>
-            Ej: <code>IVA Mensual,fiscal,2026-04-18,TechSolutions S.R.L.,alta</code>
+            Ej: <code>IVA Mensual,fiscal,2026-04-18,Juan García,alta</code>
           </div>
           <textarea className="form-textarea" style={{minHeight:200,fontFamily:'JetBrains Mono,monospace',fontSize:12}}
             value={csvText} onChange={e=>setCsvText(e.target.value)}
@@ -3628,7 +4047,7 @@ function ImportarVencimientos({ vencimientos, setVencimientos, clients, onClose 
 // ── CATÁLOGO DE TRIBUTOS (módulo standalone) ─────────
 function CatalogoTributos({ tributosCatalogo, setTributosCatalogo }) {
   const [modal, setModal]   = useState(false);
-  const [form, setForm]     = useState({ label:'', categoria:'Nacional', organismo:'ARCA', periodicidad:'mensual', dia:'' });
+  const [form, setForm]     = useState({ label:'', categoria:'Nacional', organismo:'ARCA', periodicidad:'mensual', dia:'',id:'' });
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -3647,14 +4066,14 @@ function CatalogoTributos({ tributosCatalogo, setTributosCatalogo }) {
   };
   const openNew = () => {
     setEditId(null);
-    setForm({ label:'', categoria:'Nacional', organismo:'ARCA', periodicidad:'mensual', dia:'' });
+    setForm({ label:'', categoria:'Nacional', organismo:'ARCA', periodicidad:'mensual', dia:'', id:'' });
     setModal(true);
   };
 
   const handleSave = async () => {
     if (!form.label.trim()) return;
     setSaving(true);
-    const payload = { label:form.label.trim(), categoria:form.categoria, organismo:form.organismo, periodicidad:form.periodicidad, dia:Number(form.dia)||null };
+    const payload = { label:form.label.trim(), categoria:form.categoria, organismo:form.organismo, periodicidad:form.periodicidad, dia:Number(form.dia), id:form.id||null };
     try {
       const fb = FB();
       if (editId) {
@@ -3772,6 +4191,11 @@ function CatalogoTributos({ tributosCatalogo, setTributosCatalogo }) {
               <input className="form-input" type="number" min="1" max="31" value={form.dia}
                 onChange={e=>setForm(f=>({...f,dia:e.target.value}))} placeholder="Ej: 20" />
             </div>
+            <div className="form-group">
+              <label className="form-label">ID <span style={{color:'var(--gray2)',fontWeight:400}}>(opcional)</span></label>
+              <input className="form-input" type="text" value={form.id}
+                onChange={e=>setForm(f=>({...f,id:e.target.value}))} placeholder="Ej: siradig" />
+            </div>
           </div>
           <div style={{padding:'10px 14px',background:'var(--blue2)',borderRadius:8,fontSize:12,color:'#1e40af',marginTop:4}}>
             💡 El día se usa para generar automáticamente vencimientos al asignar este tributo a un cliente.
@@ -3789,26 +4213,13 @@ function App() {
   const [section, setSection]       = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const [clients, setClients]             = useState(MOCK_CLIENTS);
-  const [vencimientos, setVencimientos]   = useState(CALENDARIO_2026);
+  const [clients, setClients]             = useState([]);
+  const [vencimientos, setVencimientos]   = useState([]);
   const [tributosCatalogo, setTributosCatalogo] = useState(TRIBUTOS_SEED);
   const [cobros, setCobros]               = useState([]);
-  const [facturas, setFacturas]           = useState([
-    { id:'f1', clienteId:'mock-1', cliente:'TechSolutions S.R.L.', concepto:'Pack Integral - Marzo 2026',   monto:450000, fecha:'2026-03-01', estado:'facturado' },
-    { id:'f2', clienteId:'mock-2', cliente:'Valentina Rodríguez',  concepto:'Asesoría Fiscal - Marzo 2026', monto:195000, fecha:'2026-03-01', estado:'pendiente' },
-    { id:'f3', clienteId:'mock-3', cliente:'Diego Fernández',      concepto:'Contabilidad Básica - Mar 2026',monto:155000, fecha:'2026-03-01', estado:'cobrado' },
-  ]);
-  const [tareas, setTareas]               = useState([
-    { id:'t1', texto:'Llamar a TechSolutions por nómina de abril', cliente:'TechSolutions S.R.L.', completado:false, fecha:'2026-03-10' },
-    { id:'t2', texto:'Enviar recordatorio de vencimiento IVA', cliente:'TechSolutions S.R.L.', completado:false, fecha:'2026-03-10' },
-    { id:'t3', texto:'Revisar recategorización Diego Fernández', cliente:'Diego Fernández', completado:false, fecha:'2026-03-12' },
-    { id:'t4', texto:'Cobrar honorario Valentina (pendiente Feb)', cliente:'Valentina Rodríguez', completado:false, fecha:'2026-03-10' },
-    { id:'t5', texto:'Actualizar tarifas para nuevo prospecto', cliente:'', completado:true, fecha:'2026-03-08' },
-  ]);
-  const [notas, setNotas] = useState([
-    { id:'n1', texto:'TechSolutions consulta por incorporar 2 empleados nuevos en abril.', cliente:'TechSolutions S.R.L.', fecha:'2026-03-09' },
-    { id:'n2', texto:'Diego Fernández podría recategorizarse en junio. Revisar facturación acumulada en mayo.', cliente:'Diego Fernández', fecha:'2026-03-07' },
-  ]);
+  const [facturas, setFacturas]           = useState([]);
+  const [tareas, setTareas]               = useState([]);
+  const [notas, setNotas]                 = useState([]);
 
   // Auth listener
   useEffect(() => {
@@ -3876,7 +4287,7 @@ function App() {
     fb.getDocs(fb.collection(fb.db,'facturas')).then(snap => {
       if (!snap.empty) {
         const data=snap.docs.map(d=>({id:d.id,...d.data()}));
-        setFacturas(prev=>{const m=['f1','f2','f3'];return[...prev.filter(f=>m.includes(f.id)),...data];});
+        setFacturas(data);
       }
     }).catch(()=>{});
     // auto-generate monthly charges on first of month
