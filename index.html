@@ -4346,9 +4346,7 @@ function App() {
     { id:'catalogo',     label:'Tributos',     icon:'⚙️' },
   ];
 
-  // useMemo evita que React desmonte/remonte los componentes hijos en cada
-  // re-render de App, preservando el estado interno (search, filtros, etc.)
-  const sectionNode = React.useMemo(() => {
+  const renderSection = () => {
     switch(section) {
       case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
       case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} />;
@@ -4361,9 +4359,7 @@ function App() {
       case 'catalogo':     return <CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
       default:             return null;
     }
-  }, [section, clients, setClients, vencimientos, setVencimientos, tributosCatalogo,
-      setTributosCatalogo, tareas, setTareas, notas, setNotas,
-      facturas, setFacturas, cobros, setCobros, setSection]);
+  };
 
   return (
     <div className="app-layout">
@@ -4412,7 +4408,8 @@ function App() {
       </aside>
 
       <main className={`main ${sidebarCollapsed?'collapsed':''}`}>
-        {sectionNode}
+        <div style={{display:section==='clientes'?'block':'none'}}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} /></div>
+        <div style={{display:section!=='clientes'?'block':'none'}}>{renderSection()}</div>
       </main>
     </div>
   );
