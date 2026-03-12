@@ -1319,14 +1319,14 @@ function ClientNotas({ cliente }) {
 }
 
 // ── CLIENTES ─────────────────────────────────────────
-function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo }) {
-  const [search, setSearch]       = useState('');
+function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo, search, setSearch, filter, setFilter }) {
+  // search & filter lifted to App
   const [view, setView]           = useState('list');
   const [selected, setSelected]   = useState(null);
   const [detailTab, setDetailTab] = useState('info');
   const [form, setForm]           = useState({});
   const [formTab, setFormTab]     = useState('datos');
-  const [filter, setFilter]       = useState('todos');
+  // filter lifted to App
   const [saving, setSaving]       = useState(false);
   const [cuitError, setCuitError] = useState('');
   const [showPass, setShowPass]   = useState({});
@@ -4220,6 +4220,8 @@ function App() {
   const [facturas, setFacturas]           = useState([]);
   const [tareas, setTareas]               = useState([]);
   const [notas, setNotas]                 = useState([]);
+  const [clientesSearch, setClientesSearch] = useState('');
+  const [clientesFilter, setClientesFilter] = useState('todos');
 
   // Auth listener
   useEffect(() => {
@@ -4349,7 +4351,7 @@ function App() {
   const renderSection = () => {
     switch(section) {
       case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
-      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} />;
+      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} search={clientesSearch} setSearch={setClientesSearch} filter={clientesFilter} setFilter={setClientesFilter} />;
       case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
       case 'facturacion':  return <Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
       case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
@@ -4408,8 +4410,7 @@ function App() {
       </aside>
 
       <main className={`main ${sidebarCollapsed?'collapsed':''}`}>
-        <div style={{display:section==='clientes'?'block':'none'}}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} /></div>
-        <div style={{display:section!=='clientes'?'block':'none'}}>{renderSection()}</div>
+        {renderSection()}
       </main>
     </div>
   );
