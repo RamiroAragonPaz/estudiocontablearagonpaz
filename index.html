@@ -1319,14 +1319,178 @@ function ClientNotas({ cliente }) {
 }
 
 // ── CLIENTES ─────────────────────────────────────────
-function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo }) {
+// ── TAREAS RECURRENTES POR CLIENTE ──────────────────────────────────
+function TareasRecurrentes({ cliente, tareas, setTareas }) {
+  const [form, setForm]     = useState({ texto:'', frecuencia:'mensual', dia:1 });
+  const [saving, setSaving] = useState(false);
+
+  // Recurrentes are tareas with clienteId===cliente.id && recurrente===true
+  const recurrentes = (tareas||[]).filter(t => t.clienteId === cliente.id && t.recurrente);
+
+  const mesActual = todayStr.slice(0,7); // 'YYYY-MM'
+
+  // Auto-generate pending instances for current month (if not already present)
+  React.useEffect(() => {
+    if (!recurrentes.length) return;
+    recurrentes.forEach(async (r) => {
+      const dueDate = `${mesActual}-${String(r.dia||1).padStart(2,'0')}`;
+      const alreadyExists = (tareas||[]).some(t =>
+        t.recurrenteId === r.id && t.fecha === dueDate
+      );
+      if (!alreadyExists) {
+        const inst = {
+          texto: r.texto,
+          clienteId: cliente.id,
+          cliente: cliente.nombre,
+          recurrenteId: r.id,
+          fecha: dueDate,
+          completada: false,
+          recurrente: false, // instance, not template
+        };
+        try {
+          const ref = await FB().addDoc(FB().collection(FB().db,'tareas'), {...inst, createdAt: FB().serverTimestamp()});
+          setTareas(prev => [...prev, {...inst, id: ref.id}]);
+        } catch(e) {
+          setTareas(prev => [...prev, {...inst, id: 'local-'+Date.now()+Math.random()}]);
+        }
+      }
+    });
+  }, [recurrentes.length, mesActual]);
+
+  const handleAdd = async () => {
+    if (!form.texto) return;
+    setSaving(true);
+    const newRec = {
+      texto: form.texto,
+      clienteId: cliente.id,
+      cliente: cliente.nombre,
+      frecuencia: form.frecuencia || 'mensual',
+      dia: Number(form.dia) || 1,
+      recurrente: true,
+      completada: false,
+    };
+    try {
+      const ref = await FB().addDoc(FB().collection(FB().db,'tareas'), {...newRec, createdAt: FB().serverTimestamp()});
+      setTareas(prev => [...prev, {...newRec, id: ref.id}]);
+    } catch(e) {
+      setTareas(prev => [...prev, {...newRec, id: 'local-'+Date.now()}]);
+    }
+    setForm({ texto:'', frecuencia:'mensual', dia:1 });
+    setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    const result = await Swal.fire({ title:'¿Eliminar tarea recurrente?', text:'Se eliminará el template. Las instancias ya generadas no se eliminan.', icon:'warning', showCancelButton:true, confirmButtonText:'Eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'tareas',id)); } catch(e){}
+    setTareas(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Instances for this month
+  const instanciasMes = (tareas||[]).filter(t =>
+    t.clienteId === cliente.id && !t.recurrente &&
+    recurrentes.some(r => r.id === t.recurrenteId) &&
+    (t.fecha||'').startsWith(mesActual)
+  );
+
+  const toggleInst = async (t) => {
+    const updated = {...t, completada: !t.completada};
+    try { await FB().updateDoc(FB().doc(FB().db,'tareas',t.id), {completada: updated.completada}); } catch(e){}
+    setTareas(prev => prev.map(x => x.id===t.id ? updated : x));
+  };
+
+  const FREC_LABEL = { mensual:'Mensual', bimestral:'Bimestral', trimestral:'Trimestral' };
+
+  return (
+    <div>
+      {/* Templates */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:14,color:'var(--black)'}}>Tareas Recurrentes</div>
+          <div style={{fontSize:12,color:'var(--gray)',marginTop:2}}>Se generan automáticamente al inicio de cada mes como tareas pendientes.</div>
+        </div>
+      </div>
+
+      {/* Add form */}
+      <div style={{background:'var(--cream)',borderRadius:'var(--r3)',padding:14,marginBottom:18,border:'1px solid var(--border)'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'end'}}>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--gray)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.04em'}}>Descripción</div>
+            <input className="form-input" style={{fontSize:13}} value={form.texto} onChange={e=>setForm(f=>({...f,texto:e.target.value}))}
+              placeholder="Ej: Enviar VEP Monotributo, Liquidar sueldos..." onKeyDown={e=>e.key==='Enter'&&handleAdd()} />
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--gray)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.04em'}}>Frecuencia</div>
+            <select className="form-select" style={{fontSize:13,minWidth:120}} value={form.frecuencia} onChange={e=>setForm(f=>({...f,frecuencia:e.target.value}))}>
+              <option value="mensual">Mensual</option>
+              <option value="bimestral">Bimestral</option>
+              <option value="trimestral">Trimestral</option>
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--gray)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.04em'}}>Día</div>
+            <input className="form-input" style={{fontSize:13,width:60}} type="number" min="1" max="28" value={form.dia}
+              onChange={e=>setForm(f=>({...f,dia:e.target.value}))} />
+          </div>
+          <button className="btn btn-gold btn-sm" onClick={handleAdd} disabled={saving||!form.texto}>
+            {saving?'…':'+ Agregar'}
+          </button>
+        </div>
+      </div>
+
+      {/* Templates list */}
+      {recurrentes.length === 0
+        ? <div className="empty-state" style={{padding:'20px 0'}}><div className="empty-icon" style={{fontSize:28}}>🔄</div><p style={{fontSize:13}}>Sin tareas recurrentes. Agregá la primera arriba.</p></div>
+        : <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
+            {recurrentes.map(r=>(
+              <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,background:'var(--cream)',borderRadius:'var(--r2)',padding:'10px 14px',border:'1px solid var(--border)'}}>
+                <span style={{fontSize:16}}>🔄</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13,color:'var(--black)'}}>{r.texto}</div>
+                  <div style={{fontSize:11,color:'var(--gray)',marginTop:2}}>
+                    {FREC_LABEL[r.frecuencia]||r.frecuencia} · Día {r.dia} de cada período
+                  </div>
+                </div>
+                <span className="badge badge-blue" style={{fontSize:10}}>template</span>
+                <button className="btn-icon" style={{color:'var(--red)',fontSize:14}} onClick={()=>handleDelete(r.id)} title="Eliminar template">🗑️</button>
+              </div>
+            ))}
+          </div>
+      }
+
+      {/* This month's instances */}
+      {instanciasMes.length > 0 && (
+        <div>
+          <div style={{fontWeight:600,fontSize:13,color:'var(--gray)',marginBottom:10,textTransform:'uppercase',letterSpacing:'.05em'}}>
+            📅 Este mes — {new Date().toLocaleString('es-AR',{month:'long',year:'numeric'})}
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {instanciasMes.map(t=>(
+              <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius:'var(--r2)',
+                background:t.completada?'rgba(34,197,94,0.07)':'var(--bg)',border:`1px solid ${t.completada?'rgba(34,197,94,0.25)':'var(--border)'}`}}>
+                <input type="checkbox" checked={!!t.completada} onChange={()=>toggleInst(t)}
+                  style={{width:16,height:16,accentColor:'var(--green)',cursor:'pointer'}} />
+                <span style={{flex:1,fontSize:13,fontWeight:500,textDecoration:t.completada?'line-through':'none',
+                  color:t.completada?'var(--gray)':'var(--black)'}}>{t.texto}</span>
+                <span style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{t.fecha}</span>
+                {t.completada && <span className="badge badge-green" style={{fontSize:10}}>✓ hecho</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo, tareas, setTareas }) {
   const [search, setSearch]       = useState('');
   const [view, setView]           = useState('list');
   const [selected, setSelected]   = useState(null);
   const [detailTab, setDetailTab] = useState('info');
   const [form, setForm]           = useState({});
   const [formTab, setFormTab]     = useState('datos');
-  const [filter, setFilter]       = useState('todos');
+  const [filter, setFilter]       = useState('activo');
   const [saving, setSaving]       = useState(false);
   const [cuitError, setCuitError] = useState('');
   const [showPass, setShowPass]   = useState({});
@@ -1341,9 +1505,10 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
       (c.servicio||'').toLowerCase().includes(q);
     const matchFilter =
       filter === 'todos' ? true :
+      filter === 'activo' ? (c.estado === 'activo') :
       filter === 'inactivo' ? c.estado === 'inactivo' :
       filter === 'prospecto' ? c.estado === 'prospecto' :
-      c.tipo === filter;
+      c.tipo === filter && (c.estado === 'activo' || c.estado === 'prospecto');
     return matchSearch && matchFilter;
   }), [clients, search, filter]);
 
@@ -1457,6 +1622,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
       servicio: form.servicio||'', honorario: Number(form.honorario||0),
       saldoPendiente: Number(form.saldoPendiente||0), estado: form.estado||'activo',
       desde: form.desde||'', empleados: Number(form.empleados||0), notas: form.notas||'',
+      factura: form.factura||'si',
       tributos: form.tributos||[],
       claves: {
         arca_usuario: form.claves?.arca_usuario||form.cuit||'',
@@ -1626,9 +1792,19 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
                 <input className="form-input" type="number" value={form.saldoPendiente||0} onChange={e=>setForm(f=>({...f,saldoPendiente:e.target.value}))} />
               </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Notas</label>
-              <textarea className="form-textarea" value={form.notas||''} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Observaciones..." />
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Se le hace factura</label>
+                <select className="form-select" value={form.factura||'si'} onChange={e=>setForm(f=>({...f,factura:e.target.value}))}>
+                  <option value="si">✅ Sí — Siempre</option>
+                  <option value="a_pedido">🔔 A pedido</option>
+                  <option value="no">❌ No</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Notas</label>
+                <textarea className="form-textarea" value={form.notas||''} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Observaciones..." style={{minHeight:38}} />
+              </div>
             </div>
           </div>
         )}
@@ -1746,7 +1922,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
               {initials(c.nombre)}
             </div>
             <div>
-              <div className="page-title" style={{fontSize:26}}>{c.nombre}</div>
+              <div className="page-title" style={{fontSize:26}}>{(c.nombre||'').toUpperCase()}</div>
               <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
                 <span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>
                   {c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}
@@ -1775,7 +1951,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           ))}
         </div>
         <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content'}}>
-          {[['info','📋 Información'],['tributos','📊 Tributos'],['claves','🔑 Claves'],['notas','📝 Notas']].map(([t,l])=>(
+          {[['info','📋 Información'],['tributos','📊 Tributos'],['claves','🔑 Claves'],['notas','📝 Notas'],['recurrentes','🔄 Tareas Recurrentes']].map(([t,l])=>(
             <button key={t} className={`tab ${detailTab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setDetailTab(t)}>{l}</button>
           ))}
         </div>
@@ -1859,6 +2035,9 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
         {detailTab==='notas' && (
           <ClientNotas cliente={c} />
         )}
+        {detailTab==='recurrentes' && (
+          <TareasRecurrentes cliente={c} setTareas={setTareas} tareas={tareas} />
+        )}
       </div>
     );
   };
@@ -1872,7 +2051,6 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           <div className="page-subtitle">{filtered.length} cliente{filtered.length!==1?'s':''} · {clients.filter(c=>c.estado==='activo').length} activos</div>
         </div>
         <div style={{display:'flex',gap:10}}>
-          <button className="btn btn-ghost btn-sm" style={{fontSize:12}} onClick={()=>setShowCatalogo(true)}>⚙️ Catálogo Tributos</button>
           <button className="btn btn-gold" onClick={openNew}>+ Nuevo Cliente</button>
         </div>
       </div>
@@ -1882,9 +2060,23 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          {[['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
-            <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
-          ))}
+          {{(()=>{
+            const counts = {
+              todos: clients.length,
+              activo: clients.filter(c=>c.estado==='activo').length,
+              sociedad: clients.filter(c=>c.tipo==='sociedad'&&c.estado==='activo').length,
+              responsable_inscripto: clients.filter(c=>c.tipo==='responsable_inscripto'&&c.estado==='activo').length,
+              monotributista: clients.filter(c=>c.tipo==='monotributista'&&c.estado==='activo').length,
+              prospecto: clients.filter(c=>c.estado==='prospecto').length,
+              inactivo: clients.filter(c=>c.estado==='inactivo').length,
+            };
+            return [['activo','Activos'],['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
+              <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)} style={{display:'flex',alignItems:'center',gap:5}}>
+                {l}
+                <span style={{background:filter===f?'rgba(255,255,255,0.25)':'rgba(0,0,0,0.08)',borderRadius:10,padding:'1px 7px',fontSize:11,fontWeight:700,minWidth:20,textAlign:'center'}}>{counts[f]||0}</span>
+              </button>
+            ));
+          })()}
         </div>
       </div>
       {filtered.length===0
@@ -1904,18 +2096,18 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
                         <div style={{display:'flex',alignItems:'center',gap:10}}>
                           <div style={{width:34,height:34,borderRadius:9,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
                           <div>
-                            <div style={{fontWeight:600,fontSize:14}}>{c.nombre}</div>
+                            <div style={{fontWeight:600,fontSize:14}}>{(c.nombre||'').toUpperCase()}</div>
                             {c.email&&<div style={{fontSize:11,color:'var(--gray)'}}>{c.email}</div>}
                           </div>
                         </div>
                       </td>
                       <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gray)'}}>{c.cuit||'—'}</td>
-                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
+                      <td style={{verticalAlign:'middle'}}><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`} style={{display:'inline-flex',alignItems:'center',gap:3,whiteSpace:'nowrap'}}>{c.tipo==='sociedad'?'🏢 Soc':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
                       <td style={{fontSize:12,color:'var(--gray)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
-                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} tributo{(c.tributos||[]).length>1?'s':''}</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
+                      <td style={{verticalAlign:'middle'}}>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10,display:'inline-flex',alignItems:'center'}}>{(c.tributos||[]).length} trib.</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
                       <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
                       <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
-                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
+                      <td style={{verticalAlign:'middle'}}><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10,display:'inline-flex',alignItems:'center',textTransform:'capitalize'}}>{c.estado}</span></td>
                     <td onClick={e=>e.stopPropagation()}>
                       <div className="action-btns">
                         <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
@@ -1964,16 +2156,33 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   const [form, setForm]       = useState({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
   const [saving, setSaving]   = useState(false);
   const [filter, setFilter]   = useState('todos');
+  const [mesFiltro, setMesFiltro] = useState(todayStr.slice(0,7)); // 'YYYY-MM'
 
   const clientesConDeuda = clients.filter(c => c.saldoPendiente > 0);
 
-  const filtered = filter==='todos' ? cobros :
-    cobros.filter(c => c.medio===filter);
+  // First filter by month, then by medio
+  const cobrosMes = mesFiltro
+    ? cobros.filter(c => (c.fecha||'').startsWith(mesFiltro))
+    : cobros;
+  const filtered = filter==='todos' ? cobrosMes :
+    cobrosMes.filter(c => c.medio===filter);
 
-  const totalMes = cobros
-    .filter(c => c.fecha && c.fecha.startsWith(todayStr.slice(0,7)))
-    .reduce((s,c) => s+(c.monto||0),0);
+  const totalMes = cobrosMes.reduce((s,c) => s+(c.monto||0),0);
   const totalGeneral = cobros.reduce((s,c) => s+(c.monto||0),0);
+
+  // Build list of months that have cobros, plus current month always shown
+  const mesesDisponibles = React.useMemo(() => {
+    const meses = new Set(cobros.map(c=>(c.fecha||'').slice(0,7)).filter(Boolean));
+    meses.add(todayStr.slice(0,7));
+    return [...meses].sort().reverse();
+  }, [cobros]);
+
+  const fmtMes = (m) => {
+    if (!m) return '';
+    const [y,mo] = m.split('-');
+    const names = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return `${names[parseInt(mo)-1]} ${y}`;
+  };
 
   const selectedClient = clients.find(c=>c.id===form.clienteId);
 
@@ -2070,7 +2279,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
       <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
         <div className="stat-card">
           <div className="stat-icon">💰</div>
-          <div className="stat-label">Cobrado este mes</div>
+          <div className="stat-label">Cobrado — {fmtMes(mesFiltro)||'Todos'}</div>
           <div className="stat-value gold">{fmtShort(totalMes)}</div>
         </div>
         <div className="stat-card">
@@ -2087,6 +2296,19 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
         </div>
       </div>
 
+      {/* Month selector */}
+      <div style={{display:'flex',gap:8,marginBottom:10,alignItems:'center',flexWrap:'wrap'}}>
+        <span style={{fontSize:12,fontWeight:600,color:'var(--gray)',textTransform:'uppercase',letterSpacing:'.05em'}}>Mes:</span>
+        {mesesDisponibles.map(m=>(
+          <button key={m} className={`btn btn-sm ${mesFiltro===m?'btn-primary':'btn-ghost'}`}
+            onClick={()=>setMesFiltro(m)} style={{fontFamily:'Montserrat,sans-serif',fontSize:12}}>
+            {fmtMes(m)}
+          </button>
+        ))}
+        <button className={`btn btn-sm ${!mesFiltro?'btn-primary':'btn-ghost'}`}
+          onClick={()=>setMesFiltro('')} style={{fontSize:12}}>Todos</button>
+      </div>
+      {/* Medio filter */}
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
         {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago'],['cheque','📄 Cheque']].map(([f,l])=>(
           <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
@@ -3427,7 +3649,11 @@ function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
             <label className="form-label">Cliente</label>
             <select className="form-select" value={form.cliente||''} onChange={e => setForm(f => ({...f, cliente: e.target.value}))}>
               <option value="">Seleccionar cliente...</option>
-              {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+              {clients.filter(c=>c.estado==='activo'&&c.factura!=='no').map(c => (
+                <option key={c.id} value={c.nombre}>
+                  {c.nombre}{c.factura==='a_pedido'?' (a pedido)':''}
+                </option>
+              ))}
             </select>
           </div>
           <div className="form-group">
@@ -4349,7 +4575,7 @@ function App() {
   const renderSection = () => {
     switch(section) {
       case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
-      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
+      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} />;
       case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
       case 'facturacion':  return <Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
       case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
