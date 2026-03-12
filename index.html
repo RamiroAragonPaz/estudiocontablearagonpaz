@@ -2053,7 +2053,11 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
     inactivo:              clients.filter(c=>c.estado==='inactivo').length,
   }), [clients]);
 
-  const renderList = () => (
+
+  if (view==='detail') return renderDetail();
+  if (view==='new'||view==='edit') return renderForm();
+  return (
+
     <div>
       <div className="page-header">
         <div>
@@ -2128,10 +2132,6 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
       }
     </div>
   );
-
-  if (view==='detail') return renderDetail();
-  if (view==='new'||view==='edit') return renderForm();
-  return renderList();
 }
 
 
@@ -4571,11 +4571,11 @@ function App() {
     { id:'catalogo',     label:'Tributos',     icon:'⚙️' },
   ];
 
-  const renderSection = () => {
+  const sectionNode = React.useMemo(() => {
     switch(section) {
       case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
       case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} />;
-      case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
+      case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
       case 'facturacion':  return <Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
       case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
       case 'notas':        return <Notas notas={notas} setNotas={setNotas} clients={clients} />;
@@ -4584,7 +4584,8 @@ function App() {
       case 'catalogo':     return <CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
       default:             return null;
     }
-  };
+  }, [section, clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo,
+      tareas, setTareas, notas, setNotas, facturas, setFacturas, cobros, setCobros, setSection]);
 
   return (
     <div className="app-layout">
@@ -4633,7 +4634,7 @@ function App() {
       </aside>
 
       <main className={`main ${sidebarCollapsed?'collapsed':''}`}>
-        {renderSection()}
+        {sectionNode}
       </main>
     </div>
   );
