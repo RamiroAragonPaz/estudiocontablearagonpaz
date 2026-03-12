@@ -1318,15 +1318,25 @@ function ClientNotas({ cliente }) {
   );
 }
 
+// ── CLIENTES WRAPPER ──────────────────────────────────
+// Holds search/filter state so they survive App re-renders
+// (renderSection() would remount Clientes on every App state change)
+function ClientesWrapper(props) {
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('todos');
+  return <Clientes {...props} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} />;
+}
+
+
 // ── CLIENTES ─────────────────────────────────────────
 function Clientes({ clients, setClients, vencimientos, setVencimientos, tributosCatalogo, setTributosCatalogo, search, setSearch, filter, setFilter }) {
-  // search & filter lifted to App
+  // search lifted to ClientesWrapper
   const [view, setView]           = useState('list');
   const [selected, setSelected]   = useState(null);
   const [detailTab, setDetailTab] = useState('info');
   const [form, setForm]           = useState({});
   const [formTab, setFormTab]     = useState('datos');
-  // filter lifted to App
+  // filter lifted to ClientesWrapper
   const [saving, setSaving]       = useState(false);
   const [cuitError, setCuitError] = useState('');
   const [showPass, setShowPass]   = useState({});
@@ -1879,7 +1889,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
       <div style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <div className="search-wrap" style={{flex:1,minWidth:220}}>
           <span className="search-icon">🔍</span>
-          <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
+          <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>{ console.log('SEARCH INPUT:', e.target.value); setSearch(e.target.value); }} />
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {[['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
@@ -4115,7 +4125,7 @@ function CatalogoTributos({ tributosCatalogo, setTributosCatalogo }) {
 
       <div className="search-wrap" style={{marginBottom:24}}>
         <span className="search-icon">🔍</span>
-        <input className="search-input" placeholder="Buscar por nombre, categoría u organismo..." value={search} onChange={e=>setSearch(e.target.value)} />
+        <input className="search-input" placeholder="Buscar por nombre, categoría u organismo..." value={search} onChange={e=>{ console.log('SEARCH INPUT:', e.target.value); setSearch(e.target.value); }} />
       </div>
 
       {TRIBUTO_CATEGORIAS.map(cat => {
@@ -4220,8 +4230,6 @@ function App() {
   const [facturas, setFacturas]           = useState([]);
   const [tareas, setTareas]               = useState([]);
   const [notas, setNotas]                 = useState([]);
-  const [clientesSearch, setClientesSearch] = useState('');
-  const [clientesFilter, setClientesFilter] = useState('todos');
 
   // Auth listener
   useEffect(() => {
@@ -4351,7 +4359,7 @@ function App() {
   const renderSection = () => {
     switch(section) {
       case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
-      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} search={clientesSearch} setSearch={setClientesSearch} filter={clientesFilter} setFilter={setClientesFilter} />;
+      case 'clientes':     return <ClientesWrapper clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
       case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
       case 'facturacion':  return <Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
       case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
