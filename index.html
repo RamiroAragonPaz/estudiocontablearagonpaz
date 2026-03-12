@@ -2060,7 +2060,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          {{(()=>{
+          {(()=>{
             const counts = {
               todos: clients.length,
               activo: clients.filter(c=>c.estado==='activo').length,
