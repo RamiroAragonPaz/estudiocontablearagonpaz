@@ -2043,6 +2043,16 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   };
 
   // ── LIST VIEW ────────────────────────────────────────
+  const tabCounts = React.useMemo(() => ({
+    todos:                 clients.length,
+    activo:                clients.filter(c=>c.estado==='activo').length,
+    sociedad:              clients.filter(c=>c.tipo==='sociedad'&&c.estado==='activo').length,
+    responsable_inscripto: clients.filter(c=>c.tipo==='responsable_inscripto'&&c.estado==='activo').length,
+    monotributista:        clients.filter(c=>c.tipo==='monotributista'&&c.estado==='activo').length,
+    prospecto:             clients.filter(c=>c.estado==='prospecto').length,
+    inactivo:              clients.filter(c=>c.estado==='inactivo').length,
+  }), [clients]);
+
   const renderList = () => (
     <div>
       <div className="page-header">
@@ -2060,23 +2070,12 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          {(()=>{
-            const counts = {
-              todos: clients.length,
-              activo: clients.filter(c=>c.estado==='activo').length,
-              sociedad: clients.filter(c=>c.tipo==='sociedad'&&c.estado==='activo').length,
-              responsable_inscripto: clients.filter(c=>c.tipo==='responsable_inscripto'&&c.estado==='activo').length,
-              monotributista: clients.filter(c=>c.tipo==='monotributista'&&c.estado==='activo').length,
-              prospecto: clients.filter(c=>c.estado==='prospecto').length,
-              inactivo: clients.filter(c=>c.estado==='inactivo').length,
-            };
-            return [['activo','Activos'],['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
+          {[['activo','Activos'],['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
               <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)} style={{display:'flex',alignItems:'center',gap:5}}>
                 {l}
-                <span style={{background:filter===f?'rgba(255,255,255,0.25)':'rgba(0,0,0,0.08)',borderRadius:10,padding:'1px 7px',fontSize:11,fontWeight:700,minWidth:20,textAlign:'center'}}>{counts[f]||0}</span>
+                <span style={{background:filter===f?'rgba(255,255,255,0.25)':'rgba(0,0,0,0.08)',borderRadius:10,padding:'1px 7px',fontSize:11,fontWeight:700,minWidth:20,textAlign:'center'}}>{tabCounts[f]||0}</span>
               </button>
-            ));
-          })()}
+            ))}
         </div>
       </div>
       {filtered.length===0
