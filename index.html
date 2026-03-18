@@ -983,19 +983,14 @@ function Modal({ title, onClose, children, footer }) {
 function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas }) {
   const activeClients = clients.filter(c => c.estado === 'activo');
   const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
-
-  // Merge vencimientos + recurring task instances for the upcoming panel
+  // Merge vencimientos fiscales + instancias de tareas recurrentes
   const tareasComoVenc = (tareas || [])
     .filter(t => t.recurrenteId && t.fecha && !t.recurrente && !t.completado)
     .map(t => ({
-      id:         t.id,
-      nombre:     `🔁 ${t.texto}`,
-      fecha:      t.fecha,
-      clientes:   t.cliente || '',
-      completado: false,
-      esTareaRecurrente: true,
+      id: t.id, nombre: '🔁 ' + t.texto,
+      fecha: t.fecha, clientes: t.cliente || '',
+      completado: false, esTareaRecurrente: true,
     }));
-
   const pendientesHoy = [...vencimientos.filter(v => !v.completado), ...tareasComoVenc]
     .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
     .slice(0, 6);
@@ -1330,92 +1325,70 @@ function ClientNotas({ cliente }) {
   );
 }
 
-
 // ── TAREAS RECURRENTES ───────────────────────────────
-// Manages recurring task templates per client and generates
-// monthly instances automatically.
 function TareasRecurrentes({ cliente, tareas, setTareas }) {
   const [texto, setTexto]           = useState('');
   const [frecuencia, setFrecuencia] = useState('mensual');
   const [dia, setDia]               = useState('1');
   const [saving, setSaving]         = useState(false);
 
-  // Templates: recurrente:true tasks belonging to this client
   const templates = tareas.filter(t => t.recurrente && t.clienteId === cliente.id);
 
-  // Instances this month: non-template tasks generated from a template
-  const thisMonth = todayStr.slice(0, 7); // YYYY-MM
+  const thisMonth = todayStr.slice(0, 7);
   const instances = tareas.filter(t =>
-    !t.recurrente &&
-    t.clienteId === cliente.id &&
-    t.recurrenteId &&
-    (t.fecha || '').startsWith(thisMonth)
+    !t.recurrente && t.clienteId === cliente.id &&
+    t.recurrenteId && (t.fecha || '').startsWith(thisMonth)
   );
 
-  // On mount: generate missing instances for this month
+  // Generar instancias del mes si no existen
   useEffect(() => {
     if (!templates.length) return;
+    const monthNum = parseInt(thisMonth.split('-')[1]);
     const toCreate = [];
     templates.forEach(tmpl => {
       const freq = tmpl.frecuencia || 'mensual';
-      const monthNum = parseInt(thisMonth.split('-')[1]);
-      // bimestral: odd months; trimestral: Jan/Apr/Jul/Oct
-      if (freq === 'bimestral'   && monthNum % 2 !== 1) return;
-      if (freq === 'trimestral'  && ![1,4,7,10].includes(monthNum)) return;
+      if (freq === 'bimestral'  && monthNum % 2 !== 1) return;
+      if (freq === 'trimestral' && ![1,4,7,10].includes(monthNum)) return;
       const alreadyExists = tareas.some(t =>
         t.recurrenteId === tmpl.id && (t.fecha || '').startsWith(thisMonth)
       );
       if (!alreadyExists) {
-        const d = Math.min(parseInt(tmpl.dia || 1), new Date(parseInt(thisMonth.split('-')[0]), monthNum, 0).getDate());
+        const yr  = parseInt(thisMonth.split('-')[0]);
+        const d   = Math.min(parseInt(tmpl.dia || 1), new Date(yr, monthNum, 0).getDate());
         const fecha = `${thisMonth}-${String(d).padStart(2,'0')}`;
         toCreate.push({
-          texto:       tmpl.texto,
-          clienteId:   cliente.id,
-          cliente:     cliente.nombre,
-          recurrenteId: tmpl.id,
-          fecha,
-          completado:  false,
-          recurrente:  false,
+          texto: tmpl.texto, clienteId: cliente.id, cliente: cliente.nombre,
+          recurrenteId: tmpl.id, fecha, completado: false, recurrente: false,
         });
       }
     });
     if (!toCreate.length) return;
-    // Save all to Firestore
     Promise.all(toCreate.map(async task => {
       try {
         const ref = await FB().addDoc(FB().collection(FB().db,'tareas'), {...task, createdAt: FB().serverTimestamp()});
         return {...task, id: ref.id};
-      } catch(e) {
-        return {...task, id: 'local-'+Date.now()+Math.random()};
-      }
-    })).then(created => {
-      setTareas(prev => [...prev, ...created]);
-    });
-  }, [templates.length, thisMonth]);
+      } catch(e) { return {...task, id: 'local-'+Date.now()+Math.random()}; }
+    })).then(created => setTareas(prev => [...prev, ...created]));
+  }, [templates.length, thisMonth, cliente.id]);
 
   const addTemplate = async () => {
     if (!texto.trim()) return;
     setSaving(true);
     const tmpl = {
-      texto:      texto.trim(),
-      clienteId:  cliente.id,
-      cliente:    cliente.nombre,
-      frecuencia,
-      dia:        parseInt(dia),
-      recurrente: true,
-      completado: false,
+      texto: texto.trim(), clienteId: cliente.id, cliente: cliente.nombre,
+      frecuencia, dia: parseInt(dia), recurrente: true, completado: false,
     };
     try {
       const ref = await FB().addDoc(FB().collection(FB().db,'tareas'), {...tmpl, createdAt: FB().serverTimestamp()});
       setTareas(prev => [...prev, {...tmpl, id: ref.id}]);
-    } catch(e) {
-      setTareas(prev => [...prev, {...tmpl, id: 'local-'+Date.now()}]);
-    }
+    } catch(e) { setTareas(prev => [...prev, {...tmpl, id: 'local-'+Date.now()}]); }
     setTexto(''); setSaving(false);
   };
 
   const deleteTemplate = async (id) => {
-    const r = await Swal.fire({ title:'¿Eliminar tarea recurrente?', text:'Se eliminará el template. Las instancias ya generadas no se borran.', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap'}, reverseButtons:true });
+    const r = await Swal.fire({ title:'¿Eliminar template?', text:'Las instancias ya generadas no se borran.',
+      icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar',
+      customClass:{popup:'swal-ap'}, reverseButtons:true });
     if (!r.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'tareas',id)); } catch(e){}
     setTareas(prev => prev.filter(t => t.id !== id));
@@ -1423,22 +1396,23 @@ function TareasRecurrentes({ cliente, tareas, setTareas }) {
 
   const toggleInstance = async (id) => {
     const t = tareas.find(x => x.id === id);
-    try { await FB().updateDoc(FB().doc(FB().db,'tareas',id), {completado: !t.completado}); } catch(e){}
-    setTareas(prev => prev.map(x => x.id === id ? {...x, completado: !x.completado} : x));
+    try { await FB().updateDoc(FB().doc(FB().db,'tareas',id), {completado:!t.completado}); } catch(e){}
+    setTareas(prev => prev.map(x => x.id===id ? {...x,completado:!x.completado} : x));
   };
 
   const FREQ_LABEL = { mensual:'Mensual', bimestral:'Bimestral', trimestral:'Trimestral' };
 
   return (
     <div>
-      {/* ── New template form ── */}
+      {/* Formulario nuevo template */}
       <div className="card" style={{marginBottom:20}}>
         <div className="card-title" style={{marginBottom:16}}><span>➕</span> Nueva Tarea Recurrente</div>
         <div className="form-grid-3" style={{alignItems:'end'}}>
-          <div className="form-group" style={{gridColumn:'span 1',marginBottom:0}}>
+          <div className="form-group" style={{marginBottom:0}}>
             <label className="form-label">Descripción</label>
             <input className="form-input" value={texto} onChange={e=>setTexto(e.target.value)}
-              placeholder="Ej: Presentar DDJJ mensual" onKeyDown={e=>e.key==='Enter'&&addTemplate()} />
+              placeholder="Ej: Presentar DDJJ mensual"
+              onKeyDown={e=>e.key==='Enter'&&addTemplate()} />
           </div>
           <div className="form-group" style={{marginBottom:0}}>
             <label className="form-label">Frecuencia</label>
@@ -1454,19 +1428,24 @@ function TareasRecurrentes({ cliente, tareas, setTareas }) {
               onChange={e=>setDia(e.target.value)} placeholder="1-28" />
           </div>
         </div>
-        <button className="btn btn-gold" style={{marginTop:14}} onClick={addTemplate} disabled={saving||!texto.trim()}>
-          {saving ? '⏳ Guardando...' : '+ Agregar Template'}
+        <button className="btn btn-gold" style={{marginTop:14}}
+          onClick={addTemplate} disabled={saving||!texto.trim()}>
+          {saving?'⏳ Guardando...':'+ Agregar Template'}
         </button>
       </div>
 
-      {/* ── Templates list ── */}
+      {/* Lista de templates */}
       <div className="card" style={{marginBottom:20}}>
         <div className="card-title" style={{marginBottom:14}}><span>📋</span> Templates Activos ({templates.length})</div>
         {templates.length === 0
-          ? <div style={{color:'var(--gray)',fontSize:13,padding:'20px 0',textAlign:'center'}}>Sin templates. Creá uno arriba.</div>
+          ? <div style={{color:'var(--gray)',fontSize:13,padding:'20px 0',textAlign:'center'}}>
+              Sin templates. Creá uno arriba.
+            </div>
           : <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {templates.map(t => (
-                <div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'var(--cream)',borderRadius:'var(--r2)',border:'1px solid rgba(201,169,110,0.15)'}}>
+                <div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                  padding:'10px 14px',background:'var(--cream)',borderRadius:'var(--r2)',
+                  border:'1px solid rgba(201,169,110,0.2)'}}>
                   <div style={{display:'flex',alignItems:'center',gap:12}}>
                     <span style={{fontSize:18}}>🔁</span>
                     <div>
@@ -1476,32 +1455,45 @@ function TareasRecurrentes({ cliente, tareas, setTareas }) {
                       </div>
                     </div>
                   </div>
-                  <button className="btn-icon trash" onClick={()=>deleteTemplate(t.id)} title="Eliminar template">🗑️</button>
+                  <button className="btn-icon trash" onClick={()=>deleteTemplate(t.id)} title="Eliminar">🗑️</button>
                 </div>
               ))}
             </div>
         }
       </div>
 
-      {/* ── This month's instances ── */}
+      {/* Instancias del mes */}
       <div className="card">
         <div className="card-title" style={{marginBottom:14}}>
           <span>📅</span> Instancias — {MONTHS_FULL[parseInt(thisMonth.split('-')[1])-1]} {thisMonth.split('-')[0]}
         </div>
         {instances.length === 0
           ? <div style={{color:'var(--gray)',fontSize:13,padding:'20px 0',textAlign:'center'}}>
-              {templates.length === 0 ? 'Creá templates para generar instancias automáticamente.' : 'No hay instancias para este mes todavía.'}
+              {templates.length===0
+                ? 'Creá templates para generar instancias automáticamente.'
+                : 'No hay instancias para este mes todavía.'}
             </div>
           : <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {instances.map(t => (
-                <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',background:t.completado?'var(--green2)':'var(--cream)',borderRadius:'var(--r2)',border:`1px solid ${t.completado?'rgba(34,197,94,0.3)':'rgba(201,169,110,0.15)'}`,cursor:'pointer',transition:'all 0.15s'}}
-                  onClick={()=>toggleInstance(t.id)}>
-                  <div style={{width:22,height:22,borderRadius:6,flexShrink:0,background:t.completado?'var(--green)':'transparent',border:`2px solid ${t.completado?'var(--green)':'rgba(201,169,110,0.5)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'white',fontWeight:700}}>
+                <div key={t.id} onClick={()=>toggleInstance(t.id)}
+                  style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',cursor:'pointer',
+                    background:t.completado?'var(--green2)':'var(--cream)',borderRadius:'var(--r2)',
+                    border:`1px solid ${t.completado?'rgba(34,197,94,0.3)':'rgba(201,169,110,0.15)'}`,
+                    transition:'all 0.15s'}}>
+                  <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
+                    background:t.completado?'var(--green)':'transparent',
+                    border:`2px solid ${t.completado?'var(--green)':'rgba(201,169,110,0.5)'}`,
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:12,color:'white',fontWeight:700}}>
                     {t.completado?'✓':''}
                   </div>
                   <div style={{flex:1}}>
-                    <div style={{fontWeight:500,fontSize:14,textDecoration:t.completado?'line-through':'none',color:t.completado?'var(--gray)':'var(--black)'}}>{t.texto}</div>
-                    <div style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',marginTop:2}}>Vence: {fmtDate(t.fecha)}</div>
+                    <div style={{fontWeight:500,fontSize:14,
+                      textDecoration:t.completado?'line-through':'none',
+                      color:t.completado?'var(--gray)':'var(--black)'}}>{t.texto}</div>
+                    <div style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',marginTop:2}}>
+                      Vence: {fmtDate(t.fecha)}
+                    </div>
                   </div>
                   <span className={`badge ${t.completado?'badge-green':'badge-amber'}`} style={{fontSize:10}}>
                     {t.completado?'✓ Hecha':'Pendiente'}
@@ -2540,33 +2532,26 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
     if (!byDate[v.fecha]) byDate[v.fecha] = [];
     byDate[v.fecha].push(v);
   });
-  // Inject recurring task instances as virtual vencimientos
+  // Inyectar instancias de tareas recurrentes como entradas virtuales
   (tareas || []).filter(t => t.recurrenteId && t.fecha && !t.recurrente).forEach(t => {
-    const entry = {
-      id:         t.id,
-      nombre:     `🔁 ${t.texto}`,
-      tipo:       'tarea',
-      fecha:      t.fecha,
-      clientes:   t.cliente || '',
-      clienteId:  t.clienteId || '',
-      completado: t.completado,
-      esTareaRecurrente: true,
-    };
     if (!byDate[t.fecha]) byDate[t.fecha] = [];
-    byDate[t.fecha].push(entry);
+    byDate[t.fecha].push({
+      id: t.id, nombre: '🔁 ' + t.texto,
+      tipo: 'tarea', fecha: t.fecha,
+      clientes: t.cliente || '', clienteId: t.clienteId || '',
+      completado: t.completado, esTareaRecurrente: true,
+    });
   });
 
   // vencimientos for selected day
   const dayVenc = (byDate[selDate] || []).sort((a,b)=>a.completado-b.completado);
 
   const toggle = async (id) => {
-    // Check if this is a recurring task instance
-    const tarea = (tareas||[]).find(x => x.id === id && x.esTareaRecurrente !== undefined || (x.id === id && x.recurrenteId));
-    if (tarea || (tareas||[]).find(x=>x.id===id && x.recurrenteId)) {
-      const t = (tareas||[]).find(x=>x.id===id);
-      if (!t) return;
-      try { await FB().updateDoc(FB().doc(FB().db,'tareas',id),{completado:!t.completado}); } catch(e){}
-      setTareas(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
+    // Si es instancia de tarea recurrente, actualizar en colección 'tareas'
+    const esTarea = (tareas||[]).find(x => x.id === id && x.recurrenteId);
+    if (esTarea) {
+      try { await FB().updateDoc(FB().doc(FB().db,'tareas',id),{completado:!esTarea.completado}); } catch(e){}
+      setTareas(prev => prev.map(x => x.id===id ? {...x,completado:!x.completado} : x));
       return;
     }
     const v = vencimientos.find(x=>x.id===id);
@@ -4572,8 +4557,7 @@ function App() {
     { id:'catalogo',     label:'Tributos',     icon:'⚙️' },
   ];
 
-  // Each section is ALWAYS mounted — only visibility changes.
-  // This preserves internal state (search, filters, scroll) when switching sections.
+  // S(id): helper — sección siempre montada, solo cambia visibilidad
   const S = (id) => ({ style: { display: section === id ? 'block' : 'none' } });
 
   return (
