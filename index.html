@@ -983,8 +983,20 @@ function Modal({ title, onClose, children, footer }) {
 function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas }) {
   const activeClients = clients.filter(c => c.estado === 'activo');
   const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
-  const pendientesHoy = vencimientos
-    .filter(v => !v.completado)
+
+  // Merge vencimientos + recurring task instances for the upcoming panel
+  const tareasComoVenc = (tareas || [])
+    .filter(t => t.recurrenteId && t.fecha && !t.recurrente && !t.completado)
+    .map(t => ({
+      id:         t.id,
+      nombre:     `🔁 ${t.texto}`,
+      fecha:      t.fecha,
+      clientes:   t.cliente || '',
+      completado: false,
+      esTareaRecurrente: true,
+    }));
+
+  const pendientesHoy = [...vencimientos.filter(v => !v.completado), ...tareasComoVenc]
     .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
     .slice(0, 6);
   const tareasP = tareas.filter(t => !t.completado).slice(0, 5);
@@ -2397,7 +2409,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
 }
 
 // ── VENCIMIENTOS (CALENDARIO) ────────────────────────
-function Vencimientos({ vencimientos, setVencimientos, clients }) {
+function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTareas }) {
   const now = new Date();
   const [calYear,  setCalYear]  = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());     // 0-based
@@ -2528,12 +2540,37 @@ function Vencimientos({ vencimientos, setVencimientos, clients }) {
     if (!byDate[v.fecha]) byDate[v.fecha] = [];
     byDate[v.fecha].push(v);
   });
+  // Inject recurring task instances as virtual vencimientos
+  (tareas || []).filter(t => t.recurrenteId && t.fecha && !t.recurrente).forEach(t => {
+    const entry = {
+      id:         t.id,
+      nombre:     `🔁 ${t.texto}`,
+      tipo:       'tarea',
+      fecha:      t.fecha,
+      clientes:   t.cliente || '',
+      clienteId:  t.clienteId || '',
+      completado: t.completado,
+      esTareaRecurrente: true,
+    };
+    if (!byDate[t.fecha]) byDate[t.fecha] = [];
+    byDate[t.fecha].push(entry);
+  });
 
   // vencimientos for selected day
   const dayVenc = (byDate[selDate] || []).sort((a,b)=>a.completado-b.completado);
 
   const toggle = async (id) => {
+    // Check if this is a recurring task instance
+    const tarea = (tareas||[]).find(x => x.id === id && x.esTareaRecurrente !== undefined || (x.id === id && x.recurrenteId));
+    if (tarea || (tareas||[]).find(x=>x.id===id && x.recurrenteId)) {
+      const t = (tareas||[]).find(x=>x.id===id);
+      if (!t) return;
+      try { await FB().updateDoc(FB().doc(FB().db,'tareas',id),{completado:!t.completado}); } catch(e){}
+      setTareas(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
+      return;
+    }
     const v = vencimientos.find(x=>x.id===id);
+    if (!v) return;
     try { await FB().updateDoc(FB().doc(FB().db,'vencimientos',id),{completado:!v.completado}); } catch(e) {}
     setVencimientos(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
   };
@@ -4588,7 +4625,7 @@ function App() {
       <main className={`main ${sidebarCollapsed?'collapsed':''}`}>
         <div {...S('dashboard')}><Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} /></div>
         <div {...S('clientes')}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} /></div>
-        <div {...S('vencimientos')}><Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} /></div>
+        <div {...S('vencimientos')}><Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} tareas={tareas} setTareas={setTareas} /></div>
         <div {...S('facturacion')}><Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
         <div {...S('tareas')}><Tareas tareas={tareas} setTareas={setTareas} clients={clients} /></div>
         <div {...S('notas')}><Notas notas={notas} setNotas={setNotas} clients={clients} /></div>
