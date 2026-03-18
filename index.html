@@ -1330,27 +1330,23 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   const [saving, setSaving]       = useState(false);
   const [cuitError, setCuitError] = useState('');
   const [showPass, setShowPass]   = useState({});
-  const [showCatalogo, setShowCatalogo] = useState(false); // FIX: was missing
-  console.log('[Clientes render] search=', JSON.stringify(search), 'view=', view);
+  const [showCatalogo, setShowCatalogo] = useState(false);
 
-  // Debug: log every render with current search value
-  console.log('[Clientes render] search=', JSON.stringify(search), 'view=', view);
-
-  const filtered = clients.filter(c => {
-    const q = (search || '').toLowerCase().trim();
+  const filtered = React.useMemo(() => clients.filter(c => {
+    const q = (search||'').toLowerCase().trim();
     const matchSearch = !q ||
-      (c.nombre  || '').toLowerCase().includes(q) ||
-      (c.email   || '').toLowerCase().includes(q) ||
-      (c.cuit    || '').replace(/\D/g,'').includes(q.replace(/\D/g,'')) ||
-      (c.telefono|| '').includes(q) ||
-      (c.servicio|| '').toLowerCase().includes(q);
+      (c.nombre||'').toLowerCase().includes(q) ||
+      (c.email||'').toLowerCase().includes(q) ||
+      (c.cuit||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')) ||
+      (c.telefono||'').includes(q) ||
+      (c.servicio||'').toLowerCase().includes(q);
     const matchFilter =
-      filter === 'todos'    ? true :
+      filter === 'todos' ? true :
       filter === 'inactivo' ? c.estado === 'inactivo' :
-      filter === 'prospecto'? c.estado === 'prospecto' :
+      filter === 'prospecto' ? c.estado === 'prospecto' :
       c.tipo === filter;
     return matchSearch && matchFilter;
-  });
+  }), [clients, search, filter]);
 
   const handleCuitChange = (val) => {
     const digits = val.replace(/\D/g, '').slice(0, 11);
@@ -1380,6 +1376,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   };
   const openDetail = (c) => { setSelected(c); setDetailTab('info'); setView('detail'); };
 
+  // Expose openDetail for cross-component navigation (used by Dashboard)
   React.useEffect(() => {
     window.__openClient = (clientId) => {
       const c = clients.find(x => x.id === clientId);
@@ -1387,39 +1384,58 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
     };
     return () => { window.__openClient = null; };
   }, [clients]);
-
   const backToList = () => setView('list');
 
+  // ── CUIT-aware vencimiento generator ────────────────────────────────
+  // Given a client + their assigned tributos, produces dated vencimientos
+  // for the next 12 months, respecting CUIT-dependent due dates (IVA, F.931, etc.)
   const generateVencimientosForClient = async (client, tributos) => {
     if (!tributos || !tributos.length) return [];
-    const now  = new Date();
-    const cuit = (client.cuit || '').replace(/[-\s]/g, '');
+    const now   = new Date();
+    const cuit  = (client.cuit || '').replace(/[-\s]/g, '');
     const generated = [];
+
     for (let m = 0; m < 12; m++) {
       const totalMon = now.getMonth() + m;
       const yr  = now.getFullYear() + Math.floor(totalMon / 12);
-      const mon = totalMon % 12;
+      const mon = totalMon % 12;                   // 0-indexed month
+
       tributos.forEach(t => {
         const per = t.periodicidad || 'mensual';
+        // skip non-recurring
         if (per === 'variable' || per === 'cuotas' || per === 'anual') return;
         if (per === 'semestral'     && m % 6 !== 0) return;
         if (per === 'bimestral'     && m % 2 !== 0) return;
         if (per === 'cuatrimestral' && m % 4 !== 0) return;
+
+        // Resolve the exact day using global resolveVencDia (uses CUIT_OFFSETS)
         const rawDay = resolveVencDia(t, cuit, yr, mon);
         const maxDay = new Date(yr, mon + 1, 0).getDate();
         const day    = Math.min(rawDay, maxDay);
         const fecha  = `${yr}-${String(mon+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        const cuitTag = t.cuitDependiente && cuit.length ? ` · CUIT ···${cuit.slice(-1)}` : '';
+
+        // For CUIT-dependent tributos, append last digit so it's traceable
+        const cuitTag = t.cuitDependiente && cuit.length
+          ? ` · CUIT ···${cuit.slice(-1)}`
+          : '';
+        const nombre = `${t.label}${cuitTag} — ${client.nombre}`;
+
         generated.push({
-          nombre: `${t.label}${cuitTag} — ${client.nombre}`,
-          tipo: t.categoria === 'Laboral' ? 'laboral' : 'fiscal',
-          fecha, clientes: client.nombre,
-          prioridad: t.categoria === 'Nacional' ? 'alta' : 'media',
-          completado: false, autoGenerado: true,
-          clienteId: client.id, tributoId: t.id, notas: t.nota || '',
+          nombre,
+          tipo:       t.categoria === 'Laboral' ? 'laboral' : 'fiscal',
+          fecha,
+          clientes:   client.nombre,
+          prioridad:  t.categoria === 'Nacional' ? 'alta' : 'media',
+          completado: false,
+          autoGenerado: true,
+          clienteId:  client.id,
+          tributoId:  t.id,
+          notas:      t.nota || '',
         });
       });
     }
+
+    // Persist to Firestore + local state
     const saved = [];
     for (const v of generated) {
       try {
@@ -1471,6 +1487,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
         setClients(prev => prev.map(c => c.id===selected.id ? savedClient : c));
       }
     }
+    // auto-generate vencimientos for NEW clients with assigned tributos
     if (view === 'new' && (form.tributos||[]).length > 0) {
       const newVenc = await generateVencimientosForClient(savedClient, form.tributos);
       if (newVenc.length > 0) setVencimientos(prev => [...prev, ...newVenc]);
@@ -1619,7 +1636,8 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
         {formTab==='tributos' && (
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <p style={{fontSize:13,color:'var(--gray)'}}>Seleccioná los tributos que aplican.</p>
+              <p style={{fontSize:13,color:'var(--gray)'}}>Seleccioná los tributos que aplican. Al guardar se generarán los vencimientos automáticamente.</p>
+              <button className="btn btn-ghost btn-sm" style={{fontSize:12,flexShrink:0}} onClick={()=>setShowCatalogo(true)}>⚙️ Gestionar catálogo</button>
             </div>
             {TRIBUTO_CATEGORIAS.map(cat => {
               const items = tributosCatalogo.filter(t=>(t.categoria||'Otro')===cat);
@@ -1663,40 +1681,52 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             <div style={{padding:'10px 14px',background:'var(--amber2)',borderRadius:'var(--r2)',marginBottom:20,fontSize:13,color:'#78350f',borderLeft:'3px solid var(--amber)'}}>
               🔐 <strong>Información sensible.</strong> Guardada en tu base de datos privada de Firebase.
             </div>
+            {/* ARCA — with CUIT/usuario */}
             <div className="clave-card" style={{marginBottom:14}}>
               <div className="clave-card-title">🏛️ ARCA (Ex-AFIP)</div>
               <div className="form-grid-2">
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="form-label">CUIT / Usuario</label>
                   <input className="form-input" value={form.claves?.arca_usuario||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,arca_usuario:e.target.value}}))} placeholder="CUIT o usuario ARCA" />
+                  <div style={{fontSize:10,color:'var(--gray2)',marginTop:3}}>Se completa automáticamente con el CUIT ingresado</div>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="form-label">Contraseña</label>
                   <div style={{position:'relative'}}>
                     <input className="form-input" type={showPass['arca_p']?'text':'password'} value={form.claves?.arca_clave||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,arca_clave:e.target.value}}))} placeholder="Contraseña ARCA" style={{paddingRight:44}} />
-                    <button onClick={()=>togglePass('arca_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>{showPass['arca_p']?'🙈':'👁️'}</button>
+                    <button onClick={()=>togglePass('arca_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>
+                      {showPass['arca_p']?'🙈':'👁️'}
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
+            {/* ARBA — solo contraseña */}
             <div className="clave-card" style={{marginBottom:14}}>
               <div className="clave-card-title">🏠 ARBA / Rentas Provincia</div>
               <div className="form-group" style={{marginBottom:0,maxWidth:340}}>
                 <label className="form-label">Contraseña</label>
                 <div style={{position:'relative'}}>
                   <input className="form-input" type={showPass['arba_p']?'text':'password'} value={form.claves?.arba_clave||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,arba_clave:e.target.value}}))} placeholder="Contraseña ARBA" style={{paddingRight:44}} />
-                  <button onClick={()=>togglePass('arba_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>{showPass['arba_p']?'🙈':'👁️'}</button>
+                  <button onClick={()=>togglePass('arba_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>
+                    {showPass['arba_p']?'🙈':'👁️'}
+                  </button>
                 </div>
+                <div style={{fontSize:10,color:'var(--gray2)',marginTop:3}}>Usuario: se usa el mismo CUIT de ARCA</div>
               </div>
             </div>
+            {/* Municipal — solo contraseña */}
             <div className="clave-card">
               <div className="clave-card-title">🏙️ Municipal / Tasas</div>
               <div className="form-group" style={{marginBottom:0,maxWidth:340}}>
                 <label className="form-label">Contraseña</label>
                 <div style={{position:'relative'}}>
                   <input className="form-input" type={showPass['muni_p']?'text':'password'} value={form.claves?.muni_clave||''} onChange={e=>setForm(f=>({...f,claves:{...f.claves,muni_clave:e.target.value}}))} placeholder="Contraseña Municipal" style={{paddingRight:44}} />
-                  <button onClick={()=>togglePass('muni_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>{showPass['muni_p']?'🙈':'👁️'}</button>
+                  <button onClick={()=>togglePass('muni_p')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16,color:'var(--gray)'}}>
+                    {showPass['muni_p']?'🙈':'👁️'}
+                  </button>
                 </div>
+                <div style={{fontSize:10,color:'var(--gray2)',marginTop:3}}>Usuario: se usa el mismo CUIT de ARCA</div>
               </div>
             </div>
           </div>
@@ -1763,7 +1793,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             </div>
             <div className="card">
               <div className="card-title"><span>💼</span> Datos Comerciales</div>
-              {[['Servicio',c.servicio||'-'],['Estado',c.estado],['Empleados',c.empleados>0?c.empleados:'-'],['Tipo',c.tipo==='sociedad'?'Sociedad':c.tipo==='responsable_inscripto'?'Resp. Inscripto':c.tipo==='monotributista'?'Monotributista':'Exento']].map(([k,v])=>(
+              {[['Servicio',c.servicio||'-'],['Estado',c.estado],['Empleados',c.empleados>0?c.empleados:'-'],['Tipo',c.tipo==='sociedad'?'Sociedad':c.tipo==='responsable_inscripto'?'Resp. Inscripto':c.tipo==='monotributista'?'Monotributista':'Exentona Física']].map(([k,v])=>(
                 <div key={k} style={{padding:'8px 0',borderBottom:'1px solid var(--cream2)'}}>
                   <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:2}}>{k}</div>
                   <div style={{fontSize:14,fontWeight:500}}>{v}</div>
@@ -1799,9 +1829,9 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
         {detailTab==='claves' && (
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
             {[
-              {title:'🏛️ ARCA (Ex-AFIP)', showUser:true,  u:c.claves?.arca_usuario||c.cuit, p:c.claves?.arca_clave, kp:'d_arca_p'},
-              {title:'🏠 ARBA / Provincia', showUser:false, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.arba_clave, kp:'d_arba_p'},
-              {title:'🏙️ Municipal',        showUser:false, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.muni_clave, kp:'d_muni_p'},
+              {title:'🏛️ ARCA (Ex-AFIP)', showUser:true, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.arca_clave, ku:'d_arca_u', kp:'d_arca_p'},
+              {title:'🏠 ARBA / Provincia', showUser:false, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.arba_clave, ku:'d_arba_u', kp:'d_arba_p'},
+              {title:'🏙️ Municipal', showUser:false, u:c.claves?.arca_usuario||c.cuit, p:c.claves?.muni_clave, ku:'d_muni_u', kp:'d_muni_p'},
             ].map(({title,showUser,u,p,kp})=>(
               <div key={title} className="card">
                 <div className="card-title" style={{marginBottom:14}}><span>🔑</span> {title}</div>
@@ -1811,7 +1841,9 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
                     <div style={{padding:'8px 12px',background:'var(--cream)',borderRadius:'var(--r2)',fontFamily:'JetBrains Mono,monospace',fontSize:13,color:u?'var(--black)':'var(--gray2)',fontStyle:u?'normal':'italic'}}>{u||'No cargado'}</div>
                   </div>
                 )}
-                {!showUser && u && <div style={{marginBottom:10,fontSize:11,color:'var(--gray2)'}}>Usuario: {u}</div>}
+                {!showUser && u && (
+                  <div style={{marginBottom:10,fontSize:11,color:'var(--gray2)'}}>Usuario: {u}</div>
+                )}
                 <div>
                   <div style={{fontSize:10,color:'var(--gray2)',textTransform:'uppercase',letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:4}}>Contraseña</div>
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -1825,16 +1857,15 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             ))}
           </div>
         )}
-        {detailTab==='notas' && <ClientNotas cliente={c} />}
+        {detailTab==='notas' && (
+          <ClientNotas cliente={c} />
+        )}
       </div>
     );
   };
 
   // ── LIST VIEW ────────────────────────────────────────
-  // Inline JSX — no inner function — so React always sees the same component tree
-  if (view==='detail') return renderDetail();
-  if (view==='new'||view==='edit') return renderForm();
-  return (
+  const renderList = () => (
     <div>
       <div className="page-header">
         <div>
@@ -1846,19 +1877,10 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           <button className="btn btn-gold" onClick={openNew}>+ Nuevo Cliente</button>
         </div>
       </div>
-
       <div style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <div className="search-wrap" style={{flex:1,minWidth:220}}>
           <span className="search-icon">🔍</span>
-          <input
-            className="search-input"
-            placeholder="Buscar por nombre, CUIT o email..."
-            value={search}
-            onChange={e => {
-              console.log('[search onChange]', e.target.value);
-              setSearch(e.target.value);
-            }}
-          />
+          <input className="search-input" placeholder="Buscar por nombre, CUIT o email..." value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {[['todos','Todos'],['sociedad','Sociedades'],['responsable_inscripto','Resp. Inscripto'],['monotributista','Monotributo'],['prospecto','Prospectos'],['inactivo','Inactivos']].map(([f,l])=>(
@@ -1866,9 +1888,8 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           ))}
         </div>
       </div>
-
       {filtered.length===0
-        ? <div className="empty-state card"><div className="empty-icon">👥</div><p>No se encontraron clientes.</p></div>
+        ? <div className="empty-state card"><div className="empty-icon">👥</div><p>No se encontraron clientes. ¡Agregá el primero!</p></div>
         : (
           <div className="card" style={{padding:0,overflow:'hidden'}}>
             <div className="table-wrap">
@@ -1896,17 +1917,17 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
                       <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
                       <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
                       <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
-                      <td onClick={e=>e.stopPropagation()}>
-                        <div className="action-btns">
-                          <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
-                          <button className="btn-icon trash" title="Eliminar" onClick={async e=>{
-                            e.stopPropagation();
-                            if(!confirm(`¿Eliminar a ${c.nombre}?`)) return;
-                            try{await FB().deleteDoc(FB().doc(FB().db,'clients',c.id));}catch(er){}
-                            setClients(prev=>prev.filter(x=>x.id!==c.id));
-                          }}>🗑️</button>
-                        </div>
-                      </td>
+                    <td onClick={e=>e.stopPropagation()}>
+                      <div className="action-btns">
+                        <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
+                        <button className="btn-icon trash" title="Eliminar" onClick={async e=>{
+                          e.stopPropagation();
+                          if(!confirm(`¿Eliminar a ${c.nombre}? Esta acción no se puede deshacer.`)) return;
+                          try{await FB().deleteDoc(FB().doc(FB().db,'clients',c.id));}catch(er){}
+                          setClients(prev=>prev.filter(x=>x.id!==c.id));
+                        }}>🗑️</button>
+                      </div>
+                    </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1915,21 +1936,14 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
           </div>
         )
       }
-
-      {showCatalogo && (
-        <div className="modal-overlay" onClick={()=>setShowCatalogo(false)}>
-          <div className="modal" style={{maxWidth:700,maxHeight:'80vh',overflow:'auto'}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-              <h3 style={{fontFamily:'Playfair Display,serif',fontSize:20}}>⚙️ Catálogo de Tributos</h3>
-              <button className="btn btn-ghost btn-sm" onClick={()=>setShowCatalogo(false)}>✕</button>
-            </div>
-            <CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />
-          </div>
-        </div>
-      )}
     </div>
   );
+
+  if (view==='detail') return renderDetail();
+  if (view==='new'||view==='edit') return renderForm();
+  return renderList();
 }
+
 
 // ── COBROS ────────────────────────────────────────────
 const MEDIOS_PAGO = [
@@ -4333,20 +4347,9 @@ function App() {
     { id:'catalogo',     label:'Tributos',     icon:'⚙️' },
   ];
 
-  const renderSection = () => {
-    switch(section) {
-      case 'dashboard':    return <Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} />;
-      case 'clientes':     return <Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
-      case 'vencimientos': return <Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} />;
-      case 'facturacion':  return <Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
-      case 'tareas':       return <Tareas tareas={tareas} setTareas={setTareas} clients={clients} />;
-      case 'notas':        return <Notas notas={notas} setNotas={setNotas} clients={clients} />;
-      case 'cobros':       return <Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
-      case 'finanzas':     return <Finanzas cobros={cobros} setCobros={setCobros} facturas={facturas} setFacturas={setFacturas} />;
-      case 'catalogo':     return <CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} />;
-      default:             return null;
-    }
-  };
+  // Each section is ALWAYS mounted — only visibility changes.
+  // This preserves internal state (search, filters, scroll) when switching sections.
+  const S = (id) => ({ style: { display: section === id ? 'block' : 'none' } });
 
   return (
     <div className="app-layout">
@@ -4395,7 +4398,15 @@ function App() {
       </aside>
 
       <main className={`main ${sidebarCollapsed?'collapsed':''}`}>
-        {renderSection()}
+        <div {...S('dashboard')}><Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} /></div>
+        <div {...S('clientes')}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} /></div>
+        <div {...S('vencimientos')}><Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} /></div>
+        <div {...S('facturacion')}><Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
+        <div {...S('tareas')}><Tareas tareas={tareas} setTareas={setTareas} clients={clients} /></div>
+        <div {...S('notas')}><Notas notas={notas} setNotas={setNotas} clients={clients} /></div>
+        <div {...S('cobros')}><Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
+        <div {...S('finanzas')}><Finanzas cobros={cobros} setCobros={setCobros} facturas={facturas} setFacturas={setFacturas} /></div>
+        <div {...S('catalogo')}><CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} /></div>
       </main>
     </div>
   );
