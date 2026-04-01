@@ -983,7 +983,55 @@ function Modal({ title, onClose, children, footer }) {
 function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas }) {
   const activeClients = clients.filter(c => c.estado === 'activo');
   const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
-  // Merge vencimientos fiscales + instancias de tareas recurrentes
+
+  // ── helpers de matching (igual que en Vencimientos) ──
+  const TRIBUTO_KW_DASH = [
+    { id: 'recat_mono',  words: ['recategori'] },
+    { id: 'monotributo', words: ['monotributo'] },
+    { id: 'autonomos',   words: ['autónomos', 'autonomos'] },
+    { id: 'ganancias',   words: ['ganancias'] },
+    { id: 'iibb_cm',     words: ['convenio multilateral', 'multilateral', 'cm0'] },
+    { id: 'iibb_anual',  words: ['iibb', 'ingresos brutos'], extra: n => n.includes('anual') },
+    { id: 'iibb',        words: ['iibb', 'ingresos brutos'] },
+    { id: 'iva',         words: ['iva'] },
+    { id: 'f931',        words: ['f.931', 'f931', 'suss', 'siradig', 'f572'] },
+    { id: 'bienes_pers', words: ['bienes personales'] },
+    { id: 'imp_sellos',  words: ['sellos'] },
+    { id: 'imp_inmob',   words: ['inmobiliario'] },
+    { id: 'automotores', words: ['automotor', 'patente'] },
+    { id: 'sueldos',     words: ['sueldo', 'remuneracion', 'remuneración'] },
+  ];
+  const getTribIdDash = nombre => {
+    const n = (nombre||'').toLowerCase();
+    for (const e of TRIBUTO_KW_DASH) {
+      if (e.extra && !e.extra(n)) continue;
+      if (e.words.some(w => n.includes(w))) return e.id;
+    }
+    return null;
+  };
+  const getCuitRangeDash = nombre => {
+    const m = (nombre||'').match(/CUIT[^0-9]*term[^0-9]*(\d)\s*[-–y]\s*(\d)/i);
+    if (!m) return null;
+    const from = parseInt(m[1]), to = parseInt(m[2]);
+    return Array.from({length: to-from+1}, (_,i) => from+i);
+  };
+  const hasClientMatch = v => {
+    const tid = getTribIdDash(v.nombre);
+    if (!tid) return false;
+    const range = getCuitRangeDash(v.nombre);
+    return clients.some(c => {
+      if (c.estado === 'inactivo') return false;
+      if (!Array.isArray(c.tributos) || !c.tributos.some(t => t.id === tid)) return false;
+      if (range) {
+        const limpio = (c.cuit||'').replace(/[-\s]/g,'');
+        if (limpio.length < 2) return false;
+        return range.includes(parseInt(limpio[limpio.length-2]));
+      }
+      return true;
+    });
+  };
+
+  // Merge vencimientos fiscales + instancias de tareas recurrentes, solo con match de cliente
   const tareasComoVenc = (tareas || [])
     .filter(t => t.recurrenteId && t.fecha && !t.recurrente && !t.completado)
     .map(t => ({
@@ -991,12 +1039,17 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
       fecha: t.fecha, clientes: t.cliente || '',
       completado: false, esTareaRecurrente: true,
     }));
-  const pendientesHoy = [...vencimientos.filter(v => !v.completado), ...tareasComoVenc]
+  const pendientesHoy = [
+    ...vencimientos.filter(v => !v.completado && hasClientMatch(v)),
+    ...tareasComoVenc
+  ]
     .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
     .slice(0, 6);
+
   const tareasP = tareas.filter(t => !t.completado).slice(0, 5);
   const saldosPendientes = clients.reduce((s, c) => s + (c.saldoPendiente || 0), 0);
-  const vencUrgentes = vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 7).length;
+  // Urgentes: solo los que tienen match con algún cliente
+  const vencUrgentes = vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 7 && hasClientMatch(v)).length;
 
   const now = new Date();
   const dateDisplay = `${now.getDate()} de ${MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`;
@@ -1034,7 +1087,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           <div className="stat-delta">De un total de {clients.length} registrados</div>
           <div className="stat-card-arrow">→</div>
         </div>
-        <div className="stat-card stat-card-link" onClick={()=>setSection('facturacion')} title="Ver facturación">
+        <div className="stat-card stat-card-link" onClick={()=>setSection('vencimientos')} title="Ver vencimientos">
           <div className="stat-icon">💰</div>
           <div className="stat-label">Ingresos Mensuales</div>
           <div className="stat-value gold">{fmtShort(totalMensual)}</div>
@@ -1045,7 +1098,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           <div className="stat-icon">📅</div>
           <div className="stat-label">Vencimientos Próximos</div>
           <div className="stat-value" style={{color: vencUrgentes > 0 ? 'var(--red)' : 'var(--black)'}}>
-            {vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 30).length}
+            {vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 30 && hasClientMatch(v)).length}
           </div>
           <div className="stat-delta" style={{color: vencUrgentes > 0 ? 'var(--red)' : ''}}>
             {vencUrgentes > 0 ? `${vencUrgentes} urgentes` : 'En los próximos 30 días'}
@@ -1068,13 +1121,26 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
       <div className="grid-6040" style={{marginBottom:24}}>
         {/* VENCIMIENTOS */}
         <div className="card">
-          <div className="card-title"><span>📅</span> Próximos Vencimientos</div>
+          <div className="card-title"><span>📅</span> Próximos Vencimientos <span style={{fontSize:11,fontWeight:400,color:'var(--gray)',marginLeft:4}}>— con clientes</span></div>
           {pendientesHoy.length === 0
-            ? <div className="empty-state"><div className="empty-icon">🎉</div><p>Sin vencimientos próximos</p></div>
+            ? <div className="empty-state"><div className="empty-icon">🎉</div><p>Sin vencimientos próximos con clientes asignados</p></div>
             : pendientesHoy.map(v => {
               const days = daysUntil(v.fecha);
               const uc = urgencyClass(days);
               const d = new Date(v.fecha + 'T12:00:00');
+              // Get matched clients for this vencimiento
+              const tid = getTribIdDash(v.nombre);
+              const range = getCuitRangeDash(v.nombre);
+              const matchedClients = tid ? clients.filter(c => {
+                if (c.estado === 'inactivo') return false;
+                if (!Array.isArray(c.tributos) || !c.tributos.some(t => t.id === tid)) return false;
+                if (range) {
+                  const limpio = (c.cuit||'').replace(/[-\s]/g,'');
+                  if (limpio.length < 2) return false;
+                  return range.includes(parseInt(limpio[limpio.length-2]));
+                }
+                return true;
+              }) : [];
               return (
                 <div className="venc-item" key={v.id}>
                   <div className={`venc-date-box ${uc}`}>
@@ -1084,7 +1150,11 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
                   <div className="venc-info">
                     <div className="venc-name">{v.nombre}</div>
                     <div className="venc-client">
-                      {v.clientes} · {days < 0 ? <span style={{color:'var(--red)', fontWeight:600}}>Vencido</span> : days === 0 ? <span style={{color:'var(--red)', fontWeight:600}}>HOY</span> : `${days}d`}
+                      {matchedClients.length > 0
+                        ? <>{matchedClients.slice(0,2).map(c=>c.nombre).join(', ')}{matchedClients.length > 2 ? ` +${matchedClients.length-2}` : ''}</>
+                        : (v.clientes || '—')
+                      }
+                      {' · '}{days < 0 ? <span style={{color:'var(--red)', fontWeight:600}}>Vencido</span> : days === 0 ? <span style={{color:'var(--red)', fontWeight:600}}>HOY</span> : `${days}d`}
                     </div>
                   </div>
                   <span className={`badge badge-${uc === 'urgent' ? 'red' : uc === 'soon' ? 'amber' : 'green'}`}>
@@ -2743,7 +2813,9 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
       ? vencimientos
       : listFilter === 'vencidos'
         ? vencimientos.filter(v => !v.completado && daysUntil(v.fecha) < 0)
-        : vencimientos.filter(v => !v.completado && daysUntil(v.fecha) >= -30);
+        : listFilter === 'completados'
+          ? vencimientos.filter(v => v.completado)
+          : vencimientos.filter(v => !v.completado && daysUntil(v.fecha) >= -30);
 
     const grupos = groupVenc(allVenc);
     const rows = [];
@@ -2752,6 +2824,7 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
       const dias = daysUntil(grupo.fecha);
       const allDone = grupo.items.every(x => x.completado);
       if (listFilter === 'pendientes' && allDone) return;
+      if (listFilter === 'completados' && !allDone) return;
 
       const { matched, fallbackText } = getClientesDelGrupo(grupo);
 
@@ -2878,9 +2951,9 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
           ))}
         </div>
 
-        {/* Estado: Pendientes / Vencidos / Todos */}
+        {/* Estado: Pendientes / Vencidos / Completados / Todos */}
         <div style={{display:'flex',gap:4}}>
-          {[['pendientes','Pendientes'],['vencidos','Vencidos'],['todos','Todos']].map(([f,l])=>(
+          {[['pendientes','Pendientes'],['vencidos','Vencidos'],['completados','✓ Completados'],['todos','Todos']].map(([f,l])=>(
             <button key={f} className={`btn btn-sm ${listFilter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setListFilter(f)}>{l}</button>
           ))}
         </div>
@@ -2915,7 +2988,7 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
         if (rows.length === 0) return (
           <div className="empty-state card">
             <div className="empty-icon">✅</div>
-            <p>{listFilter==='vencidos'?'No hay vencimientos vencidos.':listScope==='con_clientes'?'Ningún cliente tiene obligaciones pendientes en este período.':'Sin obligaciones pendientes en este período.'}</p>
+            <p>{listFilter==='vencidos'?'No hay vencimientos vencidos.':listFilter==='completados'?'Aún no hay vencimientos completados.':listScope==='con_clientes'?'Ningún cliente tiene obligaciones pendientes en este período.':'Sin obligaciones pendientes en este período.'}</p>
           </div>
         );
 
@@ -3533,169 +3606,6 @@ function Finanzas({ cobros, setCobros, facturas, setFacturas }) {
               <label className="form-label">Fecha</label>
               <input className="form-input" type="date" value={editForm.fecha||''} onChange={e=>setEditForm(f=>({...f,fecha:e.target.value}))} />
             </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ── FACTURACIÓN ──────────────────────────────────────
-function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
-  const [modal, setModal]   = useState(null);
-  const [editItem, setEditItem] = useState(null);
-  const [form, setForm]     = useState({});
-  const [filterMes, setFilterMes] = useState('');
-  const now = new Date();
-  const mesActual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const listaFiltrada = filterMes ? facturas.filter(f=>(f.fecha||'').startsWith(filterMes)) : facturas;
-
-  // Totals computed inline in JSX
-
-  const handleSave = async () => {
-    if (!form.cliente || !form.monto) return;
-    const payload = {...form, monto: Number(form.monto), clienteId: clients.find(c=>c.nombre===form.cliente)?.id||''};
-    if (editItem) {
-      try { await FB().updateDoc(FB().doc(FB().db,'facturas',editItem.id), payload); } catch(e){}
-      setFacturas(prev=>prev.map(x=>x.id===editItem.id?{...payload,id:editItem.id}:x));
-    } else {
-      try {
-        const ref = await FB().addDoc(FB().collection(FB().db,'facturas'), {...payload, createdAt:FB().serverTimestamp()});
-        setFacturas(prev => [...prev, {...payload, id: ref.id}]);
-      } catch(e) {
-        setFacturas(prev => [...prev, {...payload, id: 'local-'+Date.now()}]);
-      }
-    }
-    setModal(null); setEditItem(null);
-  };
-
-  const ESTADO_CYCLE = { 'na':'pendiente', 'pendiente':'facturado', 'facturado':'na' };
-  const ESTADO_LABEL = { 'na':'— N/A', 'pendiente':'⏳ Pendiente', 'facturado':'🧾 Facturado' };
-  const ESTADO_BADGE = { 'na':'badge-gray', 'pendiente':'badge-amber', 'facturado':'badge-green' };
-
-  const toggleEstado = async (id) => {
-    const f = facturas.find(x=>x.id===id);
-    const cur = f?.estado||'na';
-    const newEstado = ESTADO_CYCLE[cur]||'pendiente';
-    try { await FB().updateDoc(FB().doc(FB().db,'facturas',id),{estado:newEstado}); } catch(e){}
-    setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: newEstado} : f));
-  };
-
-  const openEditFac = (f) => {
-    setEditItem(f);
-    setForm({ cliente:f.cliente||'', concepto:f.concepto||'', monto:f.monto||'', fecha:f.fecha||todayStr, estado:f.estado||'pendiente' });
-    setModal('new');
-  };
-
-  const handleDeleteFac = async (id) => {
-    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar esta factura/cargo', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
-    if (!result.isConfirmed) return;
-    try { await FB().deleteDoc(FB().doc(FB().db,'facturas',id)); } catch(e){}
-    setFacturas(prev=>prev.filter(x=>x.id!==id));
-  };
-
-  const meses = [...new Set(facturas.map(f=>(f.fecha||'').slice(0,7)))].filter(Boolean).sort().reverse();
-
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Facturación</div>
-          <div className="page-subtitle">Honorarios generados · {filterMes||'Todos los meses'}</div>
-        </div>
-        <button className="btn btn-gold" onClick={() => { setEditItem(null); setForm({ estado: 'na', fecha: todayStr }); setModal('new'); }}>+ Nuevo Cargo</button>
-      </div>
-
-      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:24}}>
-        <div className="stat-card">
-          <div className="stat-icon">🧾</div>
-          <div className="stat-label">Facturados</div>
-          <div className="stat-value gold">{fmtShort(listaFiltrada.filter(f=>f.estado==='facturado').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">⏳</div>
-          <div className="stat-label">Pendiente de factura</div>
-          <div className="stat-value" style={{color:'var(--amber)'}}>{fmtShort(listaFiltrada.filter(f=>f.estado==='pendiente').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">📋</div>
-          <div className="stat-label">Total cargos</div>
-          <div className="stat-value">{listaFiltrada.length}</div>
-        </div>
-      </div>
-
-      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
-        <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Mes:</span>
-        <button className={`btn btn-sm ${!filterMes?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes('')}>Todos</button>
-        {meses.slice(0,6).map(m=>(
-          <button key={m} className={`btn btn-sm ${filterMes===m?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes(m)}>{m}</button>
-        ))}
-      </div>
-
-      <div className="card" style={{padding:0,overflow:'hidden'}}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr>
-              <th style={{paddingLeft:16}}>Concepto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Estado <span style={{fontSize:10,opacity:0.6}}>(clic para cambiar)</span></th><th>Acciones</th>
-            </tr></thead>
-            <tbody>
-              {[...listaFiltrada].sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
-                <tr key={f.id}>
-                  <td style={{paddingLeft:16,fontWeight:500}}>{f.concepto}</td>
-                  <td style={{fontSize:13}}>{f.cliente}</td>
-                  <td style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700}}>{fmt(f.monto)}</td>
-                  <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13}}>{fmtDate(f.fecha)}</td>
-                  <td>
-                    <span className={`badge ${ESTADO_BADGE[f.estado||'na']}`} style={{cursor:'pointer'}} title="Clic para cambiar estado" onClick={()=>toggleEstado(f.id)}>
-                      {ESTADO_LABEL[f.estado||'na']}
-                    </span>
-                  </td>
-                  <td><div className="action-btns">
-                    <button className="btn-icon edit" title="Editar" onClick={()=>openEditFac(f)}>✏️</button>
-                    <button className="btn-icon trash" title="Eliminar" onClick={()=>handleDeleteFac(f.id)}>🗑️</button>
-                  </div></td>
-                </tr>
-              ))}
-              {listaFiltrada.length===0 && <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--gray2)'}}>Sin comprobantes</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {modal === 'new' && (
-        <Modal title={editItem ? "✏️ Editar Cargo" : "Nueva Factura / Cargo"} onClose={() => setModal(null)}
-          footer={<>
-            <button className="btn btn-ghost btn-sm" onClick={() => {setModal(null);setEditItem(null);}}>Cancelar</button>
-            <button className="btn btn-gold btn-sm" onClick={handleSave}>{editItem?'Guardar Cambios':'Guardar'}</button>
-          </>}>
-          <div className="form-group">
-            <label className="form-label">Cliente</label>
-            <select className="form-select" value={form.cliente||''} onChange={e => setForm(f => ({...f, cliente: e.target.value}))}>
-              <option value="">Seleccionar cliente...</option>
-              {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Concepto</label>
-            <input className="form-input" value={form.concepto||''} onChange={e => setForm(f => ({...f, concepto: e.target.value}))} placeholder="Asesoría Fiscal - Abril 2026" />
-          </div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Monto (ARS)</label>
-              <input className="form-input" type="number" value={form.monto||''} onChange={e => setForm(f => ({...f, monto: e.target.value}))} placeholder="195000" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Fecha</label>
-              <input className="form-input" type="date" value={form.fecha||''} onChange={e => setForm(f => ({...f, fecha: e.target.value}))} />
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Estado</label>
-            <select className="form-select" value={form.estado||'na'} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
-              <option value="na">— N/A</option>
-              <option value="pendiente">⏳ Pendiente de factura</option>
-              <option value="facturado">🧾 Facturado</option>
-            </select>
           </div>
         </Modal>
       )}
@@ -4535,36 +4445,6 @@ function App() {
         setFacturas(data);
       }
     }).catch(()=>{});
-    // auto-generate monthly charges on first of month
-    const todayD=new Date();
-    const monthKey=`charges-${todayD.getFullYear()}-${todayD.getMonth()}`;
-    if (todayD.getDate()>=1 && !localStorage.getItem(monthKey)) {
-      // will run after clients load — use a small delay
-      setTimeout(()=>{
-        setClients(current => {
-          const active=current.filter(c=>c.estado==='activo'&&c.honorario>0);
-          const mesLabel=`${MONTHS_FULL[todayD.getMonth()]} ${todayD.getFullYear()}`;
-          const newFacts=active.map(c=>({
-            id:'auto-'+c.id+'-'+monthKey,
-            clienteId:c.id, cliente:c.nombre,
-            concepto:`${c.servicio||'Honorarios'} - ${mesLabel}`,
-            monto:c.honorario, fecha:todayStr, estado:'pendiente'
-          }));
-          setFacturas(prev=>{
-            const autoIds=newFacts.map(f=>f.id);
-            const filtered=prev.filter(f=>!autoIds.includes(f.id));
-            return [...filtered,...newFacts];
-          });
-          // Save to firebase
-          const fb2=FB();
-          newFacts.forEach(f=>{
-            fb2?.addDoc(fb2.collection(fb2.db,'facturas'),{...f,autoGenerado:true,createdAt:fb2.serverTimestamp()}).catch(()=>{});
-          });
-          localStorage.setItem(monthKey,'done');
-          return current;
-        });
-      },1500);
-    }
   }, [user]);
 
   const handleLogout = async () => { try { await FB().signOut(FB().auth); } catch(e){} setUser(null); };
@@ -4583,7 +4463,6 @@ function App() {
     { id:'dashboard',    label:'Dashboard',    icon:'🏠' },
     { id:'clientes',     label:'Clientes',     icon:'👥' },
     { id:'vencimientos', label:'Vencimientos', icon:'📅', badge:vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)<=7).length||null },
-    { id:'facturacion',  label:'Facturación',  icon:'💰' },
     { id:'cobros',       label:'Cobros',       icon:'🧾' },
     { id:'finanzas',     label:'Finanzas',     icon:'📊' },
     { id:'tareas',       label:'Tareas',       icon:'✅', badge:tareas.filter(t=>!t.completado).length||null, badgeClass:'amber' },
@@ -4644,7 +4523,6 @@ function App() {
         <div {...S('dashboard')}><Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} /></div>
         <div {...S('clientes')}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} /></div>
         <div {...S('vencimientos')}><Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} tareas={tareas} setTareas={setTareas} /></div>
-        <div {...S('facturacion')}><Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
         <div {...S('tareas')}><Tareas tareas={tareas} setTareas={setTareas} clients={clients} /></div>
         <div {...S('notas')}><Notas notas={notas} setNotas={setNotas} clients={clients} /></div>
         <div {...S('cobros')}><Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
