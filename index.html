@@ -2400,7 +2400,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   );
 }
 
-// ── VENCIMIENTOS (CALENDARIO) ────────────────────────
+// ── VENCIMIENTOS (LISTADO POR CLIENTE) ────────────────
 function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTareas }) {
   const now = new Date();
   const [calYear,  setCalYear]  = useState(now.getFullYear());
@@ -2412,6 +2412,9 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
   const [showImport, setShowImport]       = useState(false);
   const [vencDetail, setVencDetail]       = useState(null); // grupo para modal detalle
   const [debugDay, setDebugDay]           = useState(null); // debug modal
+  const [listSearch, setListSearch]       = useState('');
+  const [listFilter, setListFilter]       = useState('pendientes'); // 'pendientes'|'todos'|'vencidos'
+  const [listSort,   setListSort]         = useState('fecha');      // 'fecha'|'cliente'|'dias'
 
   // helpers
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
@@ -2732,28 +2735,79 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
     setModal('form');
   };
 
-  // dot color for a date
-  const dotColor = (dateStr) => {
-    const vs = byDate[dateStr]||[];
-    if (!vs.length) return null;
-    const pending = vs.filter(v=>!v.completado);
-    if (!pending.length) return 'var(--green)';
-    const hasUrgent = pending.some(v=>daysUntil(dateStr)<=7);
-    return hasUrgent ? 'var(--red)' : 'var(--gold)';
+  // ── Construir filas del listado: una fila por (cliente × vencimiento_grupo) ──
+  const buildListRows = () => {
+    // Agrupar vencimientos pendientes (o todos) por nombre base + fecha
+    const allVenc = listFilter === 'todos'
+      ? vencimientos
+      : listFilter === 'vencidos'
+        ? vencimientos.filter(v => !v.completado && daysUntil(v.fecha) < 0)
+        : vencimientos.filter(v => !v.completado && daysUntil(v.fecha) >= -30);
+
+    const grupos = groupVenc(allVenc);
+    const rows = [];
+
+    grupos.forEach(grupo => {
+      const dias = daysUntil(grupo.fecha);
+      const allDone = grupo.items.every(x => x.completado);
+      if (listFilter === 'pendientes' && allDone) return;
+
+      const { matched, fallbackText } = getClientesDelGrupo(grupo);
+
+      if (matched.length > 0) {
+        matched.forEach(cliente => {
+          rows.push({ grupo, cliente, dias, allDone, ids: grupo.items.map(x=>x.id) });
+        });
+      } else {
+        // vencimiento sin match de cliente → mostrar igual con cliente genérico
+        rows.push({ grupo, cliente: null, clienteFallback: fallbackText, dias, allDone, ids: grupo.items.map(x=>x.id) });
+      }
+    });
+
+    // Filtro por búsqueda
+    const q = listSearch.toLowerCase();
+    const filtered = q
+      ? rows.filter(r =>
+          (r.cliente?.nombre||r.clienteFallback||'').toLowerCase().includes(q) ||
+          r.grupo.base.toLowerCase().includes(q)
+        )
+      : rows;
+
+    // Orden
+    filtered.sort((a,b) => {
+      if (listSort === 'cliente') return (a.cliente?.nombre||a.clienteFallback||'zzz').localeCompare(b.cliente?.nombre||b.clienteFallback||'zzz') || new Date(a.grupo.fecha)-new Date(b.grupo.fecha);
+      if (listSort === 'dias')    return a.dias - b.dias;
+      return new Date(a.grupo.fecha) - new Date(b.grupo.fecha) || (a.cliente?.nombre||'').localeCompare(b.cliente?.nombre||'');
+    });
+
+    return filtered;
   };
 
-  const days = daysInMonth(calYear, calMonth);
-  const firstDay = firstDow(calYear, calMonth);  // 0=Sun
-  // adjust to Mon-start: 0=Mon…6=Sun
-  const startOffset = (firstDay + 6) % 7;
-  const DOW_LABELS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  // Colores de urgencia
+  const urgencyStyle = (dias, completado) => {
+    if (completado) return { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d', badge: '#dcfce7', badgeText: '#166534' };
+    if (dias < 0)   return { bg: '#fff1f2', border: '#fecdd3', text: '#be123c', badge: '#fecdd3', badgeText: '#be123c' }; // vencido
+    if (dias === 0) return { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c', badge: '#fed7aa', badgeText: '#c2410c' }; // hoy
+    if (dias <= 3)  return { bg: '#fff7ed', border: '#fcd34d', text: '#b45309', badge: '#fef3c7', badgeText: '#92400e' }; // urgente
+    if (dias <= 7)  return { bg: '#fffbeb', border: '#fde68a', text: '#d97706', badge: '#fef9c3', badgeText: '#a16207' }; // próximo
+    if (dias <= 15) return { bg: '#fefce8', border: 'rgba(201,169,110,0.3)', text: '#854d0e', badge: 'rgba(201,169,110,0.15)', badgeText: '#92400e' }; // en 2 semanas
+    return { bg: 'var(--white)', border: 'rgba(201,169,110,0.12)', text: 'var(--gray)', badge: 'var(--cream2)', badgeText: 'var(--gray)' }; // normal
+  };
+
+  const diasLabel = (dias, completado) => {
+    if (completado) return '✓ Completado';
+    if (dias < 0)   return `Venció hace ${Math.abs(dias)} día${Math.abs(dias)!==1?'s':''}`;
+    if (dias === 0) return '⚡ Vence hoy';
+    if (dias === 1) return '⚠️ Mañana';
+    return `${dias} días`;
+  };
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">Agenda de Vencimientos</div>
-          <div className="page-subtitle">Calendario fiscal · {MONTHS_FULL[calMonth]} {calYear}</div>
+          <div className="page-title">Vencimientos por Cliente</div>
+          <div className="page-subtitle">Obligaciones fiscales · cruzadas con perfil de cada cliente</div>
         </div>
         <div style={{display:'flex',gap:10}}>
           <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
@@ -2765,286 +2819,222 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
         </div>
       </div>
 
-      <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
-
-        {/* ── CALENDAR ── */}
-        <div style={{flex:1,minWidth:0}}>
-          <div className="card" style={{padding:20}}>
-            {/* Month nav */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
-              <button className="btn btn-ghost btn-sm" onClick={prevMonth}>‹ Ant</button>
-              <div style={{fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:'var(--black)'}}>
-                {MONTHS_FULL[calMonth]} {calYear}
+      {/* ── RESUMEN ESTADÍSTICAS ── */}
+      {(() => {
+        const hoy = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)===0).length;
+        const urgentes = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)>0 && daysUntil(v.fecha)<=3).length;
+        const semana = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)>3 && daysUntil(v.fecha)<=7).length;
+        const vencidos = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)<0).length;
+        return (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:24}}>
+            {[
+              {label:'Vencidos',      val:vencidos, icon:'🔴', bg:'#fff1f2', border:'#fecdd3', color:'#be123c'},
+              {label:'Vence hoy',     val:hoy,      icon:'⚡', bg:'#fff7ed', border:'#fed7aa', color:'#c2410c'},
+              {label:'Próximos 3 d.', val:urgentes, icon:'⚠️', bg:'#fffbeb', border:'#fde68a', color:'#b45309'},
+              {label:'Esta semana',   val:semana,   icon:'📅', bg:'rgba(201,169,110,0.07)', border:'rgba(201,169,110,0.25)', color:'var(--gold)'},
+            ].map(s=>(
+              <div key={s.label} style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:'var(--r)',
+                padding:'16px 18px',display:'flex',alignItems:'center',gap:12}}>
+                <div style={{fontSize:24}}>{s.icon}</div>
+                <div>
+                  <div style={{fontSize:22,fontWeight:800,color:s.color,fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{s.val}</div>
+                  <div style={{fontSize:11,color:'var(--gray)',marginTop:2}}>{s.label}</div>
+                </div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={nextMonth}>Sig ›</button>
-            </div>
-
-            {/* DOW headers */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:8}}>
-              {DOW_LABELS.map(d=>(
-                <div key={d} style={{textAlign:'center',fontSize:11,fontWeight:700,color:'var(--gray2)',
-                  textTransform:'uppercase',letterSpacing:'0.5px',fontFamily:'JetBrains Mono,monospace',padding:'4px 0'}}>
-                  {d}
-                </div>
-              ))}
-            </div>
-
-            {/* Day cells */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4}}>
-              {/* empty cells before month start */}
-              {Array.from({length:startOffset}).map((_,i)=>(
-                <div key={'e'+i} style={{aspectRatio:'1',borderRadius:10}} />
-              ))}
-              {Array.from({length:days}).map((_,i)=>{
-                const d = i+1;
-                const dateStr = ymd(calYear,calMonth,d);
-                const isToday = dateStr === todayStr;
-                const isSel   = dateStr === selDate;
-                const dot     = dotColor(dateStr);
-                const count   = (byDate[dateStr]||[]).filter(v=>!v.completado).length;
-                return (
-                  <div key={d} onClick={()=>setSelDate(dateStr)}
-                    style={{
-                      aspectRatio:'1',borderRadius:10,display:'flex',flexDirection:'column',
-                      alignItems:'center',justifyContent:'center',cursor:'pointer',
-                      transition:'all 0.15s',position:'relative',
-                      background: isSel ? 'var(--black)' : isToday ? 'rgba(201,169,110,0.15)' : 'var(--cream)',
-                      border: isToday && !isSel ? '2px solid var(--gold)' : '2px solid transparent',
-                    }}>
-                    <div style={{fontSize:14,fontWeight:isSel||isToday?700:400,
-                      color:isSel?'var(--gold2)':isToday?'var(--gold)':'var(--black)'}}>
-                      {d}
-                    </div>
-                    {dot && (
-                      <div style={{display:'flex',gap:2,marginTop:2}}>
-                        {count>0 && Array.from({length:Math.min(count,3)}).map((_,i)=>(
-                          <div key={i} style={{width:5,height:5,borderRadius:'50%',background:dot}} />
-                        ))}
-                        {count>3 && <div style={{width:5,height:5,borderRadius:'50%',background:dot,opacity:0.5}} />}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Legend */}
-            <div style={{display:'flex',gap:16,marginTop:16,paddingTop:14,borderTop:'1px solid var(--cream2)',flexWrap:'wrap'}}>
-              {[['var(--red)','Urgente / Vencido'],['var(--gold)','Pendiente'],['var(--green)','Completado']].map(([c,l])=>(
-                <div key={l} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray)'}}>
-                  <div style={{width:8,height:8,borderRadius:'50%',background:c}} />{l}
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
+        );
+      })()}
+
+      {/* ── FILTROS Y BÚSQUEDA ── */}
+      <div style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <div className="search-wrap" style={{flex:1,minWidth:220}}>
+          <span className="search-icon">🔍</span>
+          <input className="search-input" placeholder="Buscar por cliente u obligación..." value={listSearch} onChange={e=>setListSearch(e.target.value)} />
         </div>
-
-        {/* ── PANEL LATERAL ── */}
-        <div style={{width:360,flexShrink:0,position:'sticky',top:20}}>
-          <div className="card" style={{padding:0,overflow:'hidden'}}>
-            {/* Panel header */}
-            <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',padding:'18px 20px',
-              display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,color:'var(--gold2)'}}>
-                  {selDate === todayStr ? '📅 Hoy' : fmtDate(selDate)}
-                </div>
-                <div style={{fontSize:11,color:'rgba(250,248,243,0.5)',marginTop:2}}>
-                  {dayVenc.length === 0 ? 'Sin vencimientos' :
-                   `${dayVenc.filter(v=>!v.completado).length} pendiente${dayVenc.filter(v=>!v.completado).length!==1?'s':''}`}
-                </div>
-                {dayVenc.length > 0 && (
-                  <button
-                    onClick={()=>setDebugDay(selDate)}
-                    style={{marginTop:6,padding:'2px 8px',fontSize:9,background:'rgba(255,255,255,0.15)',
-                      border:'1px solid rgba(255,255,255,0.3)',borderRadius:4,color:'white',cursor:'pointer',
-                      fontFamily:'monospace'}}>
-                    🔍 debug
-                  </button>
-                )}
-              </div>
-              <button className="btn btn-gold btn-sm" onClick={openNew} style={{fontSize:12}}>+ Agregar</button>
-            </div>
-
-            <div style={{padding:16,maxHeight:520,overflowY:'auto'}}>
-              {dayVenc.length === 0 ? (
-                <div className="empty-state" style={{padding:'36px 16px'}}>
-                  <div className="empty-icon" style={{fontSize:32}}>🎉</div>
-                  <p>Sin vencimientos para este día</p>
-                </div>
-              ) : (
-                (() => {
-                  const grupos = groupVenc(dayVenc);
-                  return grupos.map(grupo => {
-                    const ids   = grupo.items.map(x=>x.id);
-                    const allDone  = grupo.items.every(x=>x.completado);
-                    const someDone = grupo.items.some(x=>x.completado) && !allDone;
-                    const days     = daysUntil(grupo.fecha);
-                    const { matched: cMatch } = getClientesDelGrupo(grupo);
-
-                    return (
-                      <div key={grupo.base+'||'+grupo.fecha} style={{
-                        padding:'12px 14px',borderRadius:10,marginBottom:8,
-                        background: allDone ? 'var(--cream)' : days<0 ? 'rgba(192,57,43,0.06)' : days<=3 ? 'rgba(192,57,43,0.04)' : 'rgba(201,169,110,0.04)',
-                        border: allDone ? '1px solid var(--cream2)' : days<0 ? '1px solid rgba(192,57,43,0.25)' : days<=3 ? '1px solid rgba(192,57,43,0.18)' : '1px solid rgba(201,169,110,0.2)',
-                        opacity: allDone ? 0.65 : 1,
-                      }}>
-                        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
-
-                          {/* Checkbox grupo */}
-                          <div onClick={()=>toggleGroup(ids,!allDone)} style={{
-                            marginTop:2,flexShrink:0,width:16,height:16,borderRadius:4,
-                            border: allDone ? '2px solid var(--gold)' : someDone ? '2px solid var(--gold)' : '2px solid var(--gray3)',
-                            background: allDone ? 'var(--gold)' : someDone ? 'rgba(201,169,110,0.3)' : 'transparent',
-                            cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'
-                          }}>
-                            {allDone && <span style={{fontSize:10,color:'white',lineHeight:1}}>✓</span>}
-                            {someDone && <span style={{fontSize:10,color:'var(--gold)',lineHeight:1}}>–</span>}
-                          </div>
-
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
-                              textDecoration:allDone?'line-through':'none',lineHeight:1.3}}>
-                              {grupo.base}
-                            </div>
-                            <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap',alignItems:'center'}}>
-                              <span className={`badge ${grupo.tipo==='fiscal'?'badge-blue':grupo.tipo==='laboral'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
-                                {grupo.tipo||'fiscal'}
-                              </span>
-                              <span className={`badge ${grupo.prioridad==='alta'?'badge-red':grupo.prioridad==='baja'?'badge-green':'badge-gold'}`} style={{fontSize:9}}>
-                                {grupo.prioridad||'media'}
-                              </span>
-                              {grupo.items.length > 1 && (
-                                <span className="badge badge-gray"
-                                  style={{fontSize:9,cursor:'pointer',textDecoration:'underline dotted'}}
-                                  onClick={e=>{e.stopPropagation();setVencDetail(grupo);}}>
-                                  {grupo.items.length} venc.
-                                </span>
-                              )}
-                            </div>
-
-                            {cMatch.length > 0 && (
-                              <div style={{marginTop:8,paddingTop:7,borderTop:'1px dashed var(--cream2)'}}>
-                                <div style={{fontSize:9,fontWeight:700,color:'var(--gray)',
-                                  textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:5}}>
-                                  {cMatch.length} cliente{cMatch.length!==1?'s':''} afectado{cMatch.length!==1?'s':''}
-                                </div>
-                                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                                  {cMatch.slice(0,8).map(c=>(
-                                    <span key={c.id} style={{
-                                      fontSize:10,padding:'2px 8px',borderRadius:20,
-                                      background:'rgba(201,169,110,0.12)',
-                                      color:'var(--black)',border:'1px solid rgba(201,169,110,0.35)',
-                                      fontWeight:500,whiteSpace:'nowrap',
-                                      maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'
-                                    }}>{c.nombre}</span>
-                                  ))}
-                                  {cMatch.length > 8 && (
-                                    <span style={{fontSize:10,color:'var(--gray)',padding:'2px 4px'}}>
-                                      +{cMatch.length-8} más
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div style={{display:'flex',gap:4,flexShrink:0}}>
-                            <button className="btn btn-ghost btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
-                              onClick={()=>openEdit(grupo.items[0])}>✏️</button>
-                            <button className="btn btn-danger btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
-                              onClick={async()=>{
-                                const ok = await Swal.fire({
-                                  icon:'warning',title:'¿Eliminar vencimiento?',
-                                  text: grupo.items.length>1 ? 'Se eliminarán '+grupo.items.length+' registros agrupados.' : 'Se eliminará este vencimiento.',
-                                  showCancelButton:true,confirmButtonText:'Sí, eliminar',
-                                  cancelButtonText:'Cancelar',customClass:{popup:'swal-ap'}
-                                });
-                                if (!ok.isConfirmed) return;
-                                const fb = FB();
-                                await Promise.all(ids.map(id=>fb.deleteDoc(fb.doc(fb.db,'vencimientos',id)).catch(()=>{})));
-                                setVencimientos(prev=>prev.filter(x=>!ids.includes(x.id)));
-                              }}>🗑️</button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()
-              )}            </div>
-          </div>
-
-                    {/* Próximos 7 días — agrupados */}
-          <div className="card" style={{marginTop:16,padding:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
-              letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:12}}>
-              Próximos 7 días
-            </div>
-            {(() => {
-              const proximos = vencimientos
-                .filter(v=>!v.completado && daysUntil(v.fecha)>=0 && daysUntil(v.fecha)<=7)
-                .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-              if (proximos.length===0) return (
-                <div style={{fontSize:12,color:'var(--green)',fontWeight:600}}>✓ Sin urgencias esta semana</div>
-              );
-              // Agrupar por nombre base + fecha
-              const grupos = groupVenc(proximos);
-              return grupos.map(grupo=>{
-                const d = new Date(grupo.fecha+'T12:00:00');
-                const { matched: pMatch, fallbackText: pFallback } = getClientesDelGrupo(grupo);
-                const ids = grupo.items.map(x=>x.id);
-                const allDone = grupo.items.every(x=>x.completado);
-                return (
-                  <div key={grupo.base+grupo.fecha} onClick={()=>setSelDate(grupo.fecha)}
-                    style={{padding:'9px 0',borderBottom:'1px solid var(--cream2)',cursor:'pointer',
-                      opacity: allDone ? 0.5 : 1}}>
-                    <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
-                      <div style={{width:32,height:32,borderRadius:8,background:'var(--red2)',
-                        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                        flexShrink:0,marginTop:1}}>
-                        <div style={{fontSize:14,fontWeight:700,color:'var(--red)',lineHeight:1}}>{d.getDate()}</div>
-                        <div style={{fontSize:8,color:'var(--red)',textTransform:'uppercase',
-                          fontFamily:'JetBrains Mono,monospace'}}>{MONTHS_ES[d.getMonth()]}</div>
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,overflow:'hidden',
-                          textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.3,
-                          textDecoration:allDone?'line-through':'none'}}>
-                          {grupo.base}
-                          {grupo.items.length > 1 &&
-                            <span style={{marginLeft:5,fontSize:10,color:'var(--gray)',fontWeight:400}}>
-                              ({grupo.items.length})
-                            </span>
-                          }
-                        </div>
-                        {pMatch.length > 0 ? (
-                          <div style={{marginTop:4,display:'flex',flexWrap:'wrap',gap:3}}>
-                            {pMatch.slice(0,4).map(c=>(
-                              <span key={c.id} style={{
-                                fontSize:9,padding:'1px 6px',borderRadius:20,
-                                background:'rgba(201,169,110,0.12)',
-                                color:'var(--black)',border:'1px solid rgba(201,169,110,0.3)',
-                                fontWeight:500,whiteSpace:'nowrap',
-                                maxWidth:110,overflow:'hidden',textOverflow:'ellipsis'
-                              }}>{c.nombre}</span>
-                            ))}
-                            {pMatch.length > 4 && (
-                              <span style={{fontSize:9,color:'var(--gray)',padding:'1px 3px'}}>
-                                +{pMatch.length-4}
-                              </span>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-
+        <div style={{display:'flex',gap:4}}>
+          {[['pendientes','Pendientes'],['vencidos','Vencidos'],['todos','Todos']].map(([f,l])=>(
+            <button key={f} className={`btn btn-sm ${listFilter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setListFilter(f)}>{l}</button>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+          <span style={{fontSize:11,color:'var(--gray)'}}>Ordenar:</span>
+          {[['fecha','Fecha'],['dias','Días'],['cliente','Cliente']].map(([s,l])=>(
+            <button key={s} className={`btn btn-sm ${listSort===s?'btn-gold':'btn-ghost'}`} onClick={()=>setListSort(s)}>{l}</button>
+          ))}
         </div>
       </div>
+
+      {/* ── LISTADO PRINCIPAL ── */}
+      {(() => {
+        const rows = buildListRows();
+        if (rows.length === 0) return (
+          <div className="empty-state card">
+            <div className="empty-icon">✅</div>
+            <p>{listFilter==='vencidos'?'No hay vencimientos vencidos.':'Sin obligaciones pendientes en este período.'}</p>
+          </div>
+        );
+
+        return (
+          <div className="card" style={{padding:0,overflow:'hidden'}}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{width:32,paddingLeft:16}}></th>
+                    <th>Cliente</th>
+                    <th>Obligación</th>
+                    <th>Tipo</th>
+                    <th>Fecha vencimiento</th>
+                    <th style={{textAlign:'center'}}>Días restantes</th>
+                    <th style={{textAlign:'center'}}>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, idx) => {
+                    const { grupo, cliente, clienteFallback, dias, allDone, ids } = row;
+                    const urg = urgencyStyle(dias, allDone);
+                    const dLabel = diasLabel(dias, allDone);
+                    const someDone = grupo.items.some(x=>x.completado) && !allDone;
+
+                    return (
+                      <tr key={grupo.base+'||'+grupo.fecha+'||'+(cliente?.id||idx)}
+                        style={{
+                          background: urg.bg,
+                          borderLeft: `4px solid ${urg.border}`,
+                          opacity: allDone ? 0.65 : 1,
+                          transition: 'background 0.2s',
+                        }}>
+
+                        {/* Checkbox */}
+                        <td style={{paddingLeft:14,paddingRight:4}}>
+                          <div onClick={()=>toggleGroup(ids,!allDone)} style={{
+                            width:16,height:16,borderRadius:4,flexShrink:0,cursor:'pointer',
+                            border: allDone ? `2px solid ${urg.text}` : '2px solid #d1d5db',
+                            background: allDone ? urg.text : someDone ? 'rgba(201,169,110,0.3)' : 'transparent',
+                            display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'
+                          }}>
+                            {allDone && <span style={{fontSize:10,color:'white',lineHeight:1}}>✓</span>}
+                            {someDone && <span style={{fontSize:9,color:'var(--gold)',lineHeight:1}}>–</span>}
+                          </div>
+                        </td>
+
+                        {/* Cliente */}
+                        <td>
+                          {cliente ? (
+                            <div style={{display:'flex',alignItems:'center',gap:9}}>
+                              <div style={{width:30,height:30,borderRadius:8,flexShrink:0,
+                                background:'linear-gradient(135deg,var(--gold),var(--gold2))',
+                                display:'flex',alignItems:'center',justifyContent:'center',
+                                fontFamily:'Playfair Display,serif',fontSize:12,fontWeight:700,color:'var(--black)'}}>
+                                {initials(cliente.nombre)}
+                              </div>
+                              <div>
+                                <div style={{fontWeight:600,fontSize:13,color:'var(--black)',
+                                  textDecoration:allDone?'line-through':'none'}}>{cliente.nombre}</div>
+                                {cliente.cuit && <div style={{fontSize:10,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{cliente.cuit}</div>}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{fontSize:12,color:'var(--gray)',fontStyle:'italic'}}>
+                              {clienteFallback || 'General'}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Obligación */}
+                        <td>
+                          <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
+                            textDecoration:allDone?'line-through':'none',maxWidth:260,lineHeight:1.3}}>
+                            {grupo.base}
+                            {grupo.items.length > 1 && (
+                              <span style={{marginLeft:5,fontSize:10,color:'var(--gray)',fontWeight:400,
+                                cursor:'pointer',textDecoration:'underline dotted'}}
+                                onClick={e=>{e.stopPropagation();setVencDetail(grupo);}}>
+                                ({grupo.items.length} venc.)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Tipo */}
+                        <td>
+                          <span className={`badge ${grupo.tipo==='fiscal'?'badge-blue':grupo.tipo==='laboral'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
+                            {grupo.tipo||'fiscal'}
+                          </span>
+                        </td>
+
+                        {/* Fecha */}
+                        <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:urg.text,fontWeight:600,whiteSpace:'nowrap'}}>
+                          {fmtDate(grupo.fecha)}
+                        </td>
+
+                        {/* Días restantes */}
+                        <td style={{textAlign:'center'}}>
+                          <div style={{
+                            display:'inline-flex',alignItems:'center',justifyContent:'center',
+                            padding:'4px 10px',borderRadius:20,
+                            background: urg.badge,
+                            color: urg.badgeText,
+                            fontSize:11,fontWeight:700,fontFamily:'JetBrains Mono,monospace',
+                            whiteSpace:'nowrap',border:`1px solid ${urg.border}`
+                          }}>
+                            {dLabel}
+                          </div>
+                        </td>
+
+                        {/* Estado */}
+                        <td style={{textAlign:'center'}}>
+                          <span className={`badge ${allDone?'badge-green':dias<0?'badge-red':dias<=7?'badge-amber':'badge-gray'}`} style={{fontSize:9}}>
+                            {allDone?'✓ Hecho':dias<0?'Vencido':dias===0?'Hoy':'Pendiente'}
+                          </span>
+                        </td>
+
+                        {/* Acciones */}
+                        <td onClick={e=>e.stopPropagation()}>
+                          <div className="action-btns">
+                            <button className="btn-icon edit" title="Editar" onClick={()=>openEdit(grupo.items[0])}>✏️</button>
+                            <button className="btn-icon trash" title="Eliminar" onClick={async()=>{
+                              const ok = await Swal.fire({
+                                icon:'warning',title:'¿Eliminar vencimiento?',
+                                text: grupo.items.length>1 ? 'Se eliminarán '+grupo.items.length+' registros agrupados.' : 'Se eliminará este vencimiento.',
+                                showCancelButton:true,confirmButtonText:'Sí, eliminar',
+                                cancelButtonText:'Cancelar',customClass:{popup:'swal-ap'}
+                              });
+                              if (!ok.isConfirmed) return;
+                              const fb = FB();
+                              await Promise.all(ids.map(id=>fb.deleteDoc(fb.doc(fb.db,'vencimientos',id)).catch(()=>{})));
+                              setVencimientos(prev=>prev.filter(x=>!ids.includes(x.id)));
+                            }}>🗑️</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Leyenda de colores */}
+            <div style={{padding:'12px 20px',borderTop:'1px solid var(--cream2)',display:'flex',gap:16,flexWrap:'wrap',background:'var(--cream)'}}>
+              {[
+                ['#fecdd3','Vencido'],
+                ['#fed7aa','Vence hoy'],
+                ['#fde68a','Próximos 3 días'],
+                ['#fef9c3','Esta semana'],
+                ['rgba(201,169,110,0.15)','Próximas 2 sem.'],
+                ['var(--white)','Sin urgencia'],
+              ].map(([c,l])=>(
+                <div key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--gray)'}}>
+                  <div style={{width:12,height:12,borderRadius:3,background:c,border:'1px solid rgba(0,0,0,0.1)'}} />
+                  {l}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* FORM MODAL */}
       {modal === 'form' && (
