@@ -2415,6 +2415,7 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
   const [listSearch, setListSearch]       = useState('');
   const [listFilter, setListFilter]       = useState('pendientes'); // 'pendientes'|'todos'|'vencidos'
   const [listSort,   setListSort]         = useState('fecha');      // 'fecha'|'cliente'|'dias'
+  const [listScope,  setListScope]        = useState('con_clientes'); // 'con_clientes'|'todas'
 
   // helpers
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
@@ -2756,11 +2757,14 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
 
       if (matched.length > 0) {
         matched.forEach(cliente => {
-          rows.push({ grupo, cliente, dias, allDone, ids: grupo.items.map(x=>x.id) });
+          rows.push({ grupo, cliente, dias, allDone, ids: grupo.items.map(x=>x.id), hasClientMatch: true });
         });
       } else {
-        // vencimiento sin match de cliente → mostrar igual con cliente genérico
-        rows.push({ grupo, cliente: null, clienteFallback: fallbackText, dias, allDone, ids: grupo.items.map(x=>x.id) });
+        // vencimiento sin match de cliente
+        if (listScope === 'todas') {
+          rows.push({ grupo, cliente: null, clienteFallback: fallbackText, dias, allDone, ids: grupo.items.map(x=>x.id), hasClientMatch: false });
+        }
+        // si listScope === 'con_clientes' simplemente no se agrega
       }
     });
 
@@ -2852,11 +2856,35 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
           <span className="search-icon">🔍</span>
           <input className="search-input" placeholder="Buscar por cliente u obligación..." value={listSearch} onChange={e=>setListSearch(e.target.value)} />
         </div>
+
+        {/* Scope: Con clientes / Todas */}
+        <div style={{display:'flex',background:'var(--cream2)',padding:3,borderRadius:9,gap:2}}>
+          {[
+            ['con_clientes','👥 Con clientes'],
+            ['todas','📋 Todas'],
+          ].map(([s,l])=>(
+            <button key={s}
+              onClick={()=>setListScope(s)}
+              style={{
+                padding:'6px 14px',borderRadius:7,border:'none',cursor:'pointer',
+                fontFamily:'Montserrat,sans-serif',fontSize:12,fontWeight:600,
+                transition:'all 0.18s',
+                background: listScope===s ? 'var(--white)' : 'transparent',
+                color: listScope===s ? 'var(--black)' : 'var(--gray)',
+                boxShadow: listScope===s ? '0 2px 8px rgba(17,17,16,0.08)' : 'none',
+              }}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Estado: Pendientes / Vencidos / Todos */}
         <div style={{display:'flex',gap:4}}>
           {[['pendientes','Pendientes'],['vencidos','Vencidos'],['todos','Todos']].map(([f,l])=>(
             <button key={f} className={`btn btn-sm ${listFilter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setListFilter(f)}>{l}</button>
           ))}
         </div>
+
         <div style={{display:'flex',gap:4,alignItems:'center'}}>
           <span style={{fontSize:11,color:'var(--gray)'}}>Ordenar:</span>
           {[['fecha','Fecha'],['dias','Días'],['cliente','Cliente']].map(([s,l])=>(
@@ -2865,13 +2893,29 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
         </div>
       </div>
 
+      {/* Aviso cuando scope = todas y hay sin match */}
+      {listScope === 'todas' && (() => {
+        const sinMatch = vencimientos.filter(v => {
+          const grupos = groupVenc([v]);
+          return grupos.some(g => getClientesDelGrupo(g).matched.length === 0);
+        }).length;
+        return sinMatch > 0 ? (
+          <div style={{marginBottom:12,padding:'10px 16px',background:'rgba(201,169,110,0.08)',
+            border:'1px solid rgba(201,169,110,0.25)',borderRadius:9,fontSize:12,color:'var(--gray)',
+            display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:16}}>ℹ️</span>
+            Mostrando también obligaciones sin clientes asignados. Usá <strong>👥 Con clientes</strong> para ver solo las que aplican a tus clientes.
+          </div>
+        ) : null;
+      })()}
+
       {/* ── LISTADO PRINCIPAL ── */}
       {(() => {
         const rows = buildListRows();
         if (rows.length === 0) return (
           <div className="empty-state card">
             <div className="empty-icon">✅</div>
-            <p>{listFilter==='vencidos'?'No hay vencimientos vencidos.':'Sin obligaciones pendientes en este período.'}</p>
+            <p>{listFilter==='vencidos'?'No hay vencimientos vencidos.':listScope==='con_clientes'?'Ningún cliente tiene obligaciones pendientes en este período.':'Sin obligaciones pendientes en este período.'}</p>
           </div>
         );
 
