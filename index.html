@@ -2155,30 +2155,30 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
         : (
           <div className="card" style={{padding:0,overflow:'hidden'}}>
             <div className="table-wrap">
-              <table>
+              <table style={{fontSize:13}}>
                 <thead><tr>
-                  <th style={{paddingLeft:16}}>Cliente</th><th>CUIT</th><th>Tipo</th>
+                  <th style={{paddingLeft:12,paddingTop:8,paddingBottom:8}}>Cliente</th><th>CUIT</th><th>Tipo</th>
                   <th>Servicio</th><th>Tributos</th><th>Honorario</th><th>Saldo</th><th>Estado</th><th></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map(c=>(
                     <tr key={c.id} className="client-row" onClick={()=>openDetail(c)}>
-                      <td style={{paddingLeft:16}}>
-                        <div style={{display:'flex',alignItems:'center',gap:10}}>
-                          <div style={{width:34,height:34,borderRadius:9,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
+                      <td style={{paddingLeft:12,paddingTop:6,paddingBottom:6}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div style={{width:28,height:28,borderRadius:7,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:11,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
                           <div>
-                            <div style={{fontWeight:600,fontSize:14}}>{c.nombre}</div>
-                            {c.email&&<div style={{fontSize:11,color:'var(--gray)'}}>{c.email}</div>}
+                            <div style={{fontWeight:600,fontSize:13,lineHeight:1.2}}>{c.nombre}</div>
+                            {c.email&&<div style={{fontSize:10,color:'var(--gray)'}}>{c.email}</div>}
                           </div>
                         </div>
                       </td>
-                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gray)'}}>{c.cuit||'—'}</td>
-                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
-                      <td style={{fontSize:12,color:'var(--gray)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
-                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} tributo{(c.tributos||[]).length>1?'s':''}</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
-                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
-                      <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
-                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
+                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'var(--gray)'}}>{c.cuit||'—'}</td>
+                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>{c.tipo==='sociedad'?'🏢 Soc.':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
+                      <td style={{fontSize:11,color:'var(--gray)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
+                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:9}}>{(c.tributos||[]).length} trib.</span>:<span style={{color:'var(--gray2)',fontSize:11}}>—</span>}</td>
+                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
+                      <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:11}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:9}}>✓</span>}</td>
+                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:9}}>{c.estado}</span></td>
                     <td onClick={e=>e.stopPropagation()}>
                       <div className="action-btns">
                         <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
@@ -2211,7 +2211,6 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
 const MEDIOS_PAGO = [
   { id: 'efectivo',    label: 'Efectivo',       icon: '💵', subs: [] },
   { id: 'transferencia', label: 'Transferencia', icon: '🏦', subs: ['Banco Provincia','Banco Nación','Banco Galicia','Mercado Pago','BBVA','HSBC','Otro banco'] },
-  { id: 'cheque',      label: 'Cheque',         icon: '📄', subs: [] },
   { id: 'mp',          label: 'Mercado Pago',   icon: '💙', subs: [] },
 ];
 const NATURALEZAS_COBRO = [
@@ -2223,22 +2222,35 @@ const NATURALEZAS_COBRO = [
 
 function Cobros({ clients, setClients, cobros, setCobros }) {
   const [modal, setModal]     = useState(false);
-  const [editItem, setEditItem] = useState(null); // cobro being edited
+  const [editItem, setEditItem] = useState(null);
   const [form, setForm]       = useState({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
   const [saving, setSaving]   = useState(false);
   const [filter, setFilter]   = useState('todos');
+  const nowDate = new Date();
+  const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}`;
+  const [mesSeleccionado, setMesSeleccionado] = useState(currentMonthKey);
+
+  // Build list of available months from cobros
+  const mesesDisponibles = [...new Set(cobros.map(c=>(c.fecha||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  if (!mesesDisponibles.includes(currentMonthKey)) mesesDisponibles.unshift(currentMonthKey);
 
   const clientesConDeuda = clients.filter(c => c.saldoPendiente > 0);
 
-  const filtered = filter==='todos' ? cobros :
-    cobros.filter(c => c.medio===filter);
+  const cobrosMes = cobros.filter(c => c.fecha && c.fecha.startsWith(mesSeleccionado));
+  const filtered = (filter==='todos' ? cobrosMes : cobrosMes.filter(c => c.medio===filter))
+    .sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
 
-  const totalMes = cobros
-    .filter(c => c.fecha && c.fecha.startsWith(todayStr.slice(0,7)))
-    .reduce((s,c) => s+(c.monto||0),0);
+  const totalMes = cobrosMes.reduce((s,c) => s+(c.monto||0),0);
   const totalGeneral = cobros.reduce((s,c) => s+(c.monto||0),0);
 
   const selectedClient = clients.find(c=>c.id===form.clienteId);
+
+  // Format month label
+  const fmtMesLabel = key => {
+    if (!key) return '';
+    const [y,m] = key.split('-');
+    return `${MONTHS_FULL[parseInt(m)-1]} ${y}`;
+  };
 
   const handleSave = async () => {
     if (!form.clienteId || !form.monto || !form.fecha) return;
@@ -2303,16 +2315,26 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   };
 
   const medioActual = MEDIOS_PAGO.find(m=>m.id===form.medio);
-  const MEDIO_LABEL = {efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',cheque:'📄 Cheque',mp:'💙 Mercado Pago'};
+  const MEDIO_LABEL = {efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',mp:'💙 Mercado Pago'};
 
   return (
     <div>
       <div className="page-header">
         <div>
           <div className="page-title">Cobros</div>
-          <div className="page-subtitle">Registrá cobros y generá recibos · {cobros.length} registros</div>
+          <div className="page-subtitle">{fmtMesLabel(mesSeleccionado)} · {cobrosMes.length} registro{cobrosMes.length!==1?'s':''}</div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <select
+            value={mesSeleccionado}
+            onChange={e=>setMesSeleccionado(e.target.value)}
+            style={{padding:'8px 12px',borderRadius:'var(--r2)',border:'1.5px solid rgba(201,169,110,0.3)',
+              fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:600,
+              background:'var(--white)',color:'var(--black)',cursor:'pointer'}}>
+            {mesesDisponibles.map(m=>(
+              <option key={m} value={m}>{fmtMesLabel(m)}{m===currentMonthKey?' (actual)':''}</option>
+            ))}
+          </select>
           <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
             filtered.map(c=>({'N° Recibo':c.nroRecibo||'','Fecha':c.fecha,'Cliente':c.cliente,'Naturaleza':c.naturaleza,'Medio':c.medio+(c.submedio?' · '+c.submedio:''),'Monto':c.monto,'Notas':c.notas||''})),
             'Cobros'
@@ -2330,16 +2352,18 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
         </div>
       )}
 
-      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:16}}>
         <div className="stat-card">
           <div className="stat-icon">💰</div>
-          <div className="stat-label">Cobrado este mes</div>
+          <div className="stat-label">Cobrado en {fmtMesLabel(mesSeleccionado)}</div>
           <div className="stat-value gold">{fmtShort(totalMes)}</div>
+          <div className="stat-delta">{cobrosMes.length} cobro{cobrosMes.length!==1?'s':''} en el período</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">📊</div>
           <div className="stat-label">Total histórico</div>
           <div className="stat-value">{fmtShort(totalGeneral)}</div>
+          <div className="stat-delta">{cobros.length} registros totales</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">⏳</div>
@@ -2347,11 +2371,12 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
           <div className="stat-value" style={{color:clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0)>0?'var(--amber)':'var(--green)'}}>
             {fmtShort(clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0))}
           </div>
+          <div className="stat-delta">{clientesConDeuda.length} cliente{clientesConDeuda.length!==1?'s':''} con saldo</div>
         </div>
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-        {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago'],['cheque','📄 Cheque']].map(([f,l])=>(
+        {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago']].map(([f,l])=>(
           <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
         ))}
       </div>
@@ -2365,7 +2390,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
             </tr></thead>
             <tbody>
               {filtered.length===0
-                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">💰</div><p>Sin cobros registrados</p></div></td></tr>
+                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">💰</div><p>Sin cobros en {fmtMesLabel(mesSeleccionado)}</p></div></td></tr>
                 : filtered.map(c=>(
                   <tr key={c.id}>
                     <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,whiteSpace:'nowrap'}}>{fmtDate(c.fecha)}</td>
@@ -2483,9 +2508,10 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
   const [vencDetail, setVencDetail]       = useState(null); // grupo para modal detalle
   const [debugDay, setDebugDay]           = useState(null); // debug modal
   const [listSearch, setListSearch]       = useState('');
-  const [listFilter, setListFilter]       = useState('pendientes'); // 'pendientes'|'todos'|'vencidos'
-  const [listSort,   setListSort]         = useState('fecha');      // 'fecha'|'cliente'|'dias'
-  const [listScope,  setListScope]        = useState('con_clientes'); // 'con_clientes'|'todas'
+  const [listFilter, setListFilter]       = useState('pendientes');
+  const [listSort,   setListSort]         = useState('fecha');
+  const [listScope,  setListScope]        = useState('con_clientes');
+  const [vencOtrosMesesModal, setVencOtrosMesesModal] = useState(null);
 
   // helpers
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
@@ -2898,28 +2924,63 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
 
       {/* ── RESUMEN ESTADÍSTICAS ── */}
       {(() => {
-        const hoy = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)===0).length;
-        const urgentes = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)>0 && daysUntil(v.fecha)<=3).length;
-        const semana = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)>3 && daysUntil(v.fecha)<=7).length;
-        const vencidos = vencimientos.filter(v=>!v.completado && daysUntil(v.fecha)<0).length;
+        const nowD = new Date();
+        const mesActual = `${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,'0')}`;
+        // Solo vencimientos con match de cliente
+        const conCliente = v => {
+          const tid = getTributoId(v.nombre);
+          if (!tid) return false;
+          const range = getCuitRange(v.nombre);
+          return clients.some(c => {
+            if (c.estado === 'inactivo') return false;
+            if (!Array.isArray(c.tributos) || !c.tributos.some(t => t.id === tid)) return false;
+            if (range) {
+              const limpio = (c.cuit||'').replace(/[-\s]/g,'');
+              if (limpio.length < 2) return false;
+              return range.includes(parseInt(limpio[limpio.length-2]));
+            }
+            return true;
+          });
+        };
+        const esMesActual = v => (v.fecha||'').startsWith(mesActual);
+        const vMesConCliente = vencimientos.filter(v => esMesActual(v) && conCliente(v));
+        const vencidosMes = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) < 0).length;
+        const hoy = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) === 0).length;
+        const proximos3 = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) > 0 && daysUntil(v.fecha) <= 3).length;
+        const semana = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) > 3 && daysUntil(v.fecha) <= 7).length;
+        // Vencidos de meses anteriores con cliente
+        const vencidosOtrosMeses = vencimientos.filter(v => !v.completado && !esMesActual(v) && daysUntil(v.fecha) < 0 && conCliente(v));
+
         return (
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:24}}>
-            {[
-              {label:'Vencidos',      val:vencidos, icon:'🔴', bg:'#fff1f2', border:'#fecdd3', color:'#be123c'},
-              {label:'Vence hoy',     val:hoy,      icon:'⚡', bg:'#fff7ed', border:'#fed7aa', color:'#c2410c'},
-              {label:'Próximos 3 d.', val:urgentes, icon:'⚠️', bg:'#fffbeb', border:'#fde68a', color:'#b45309'},
-              {label:'Esta semana',   val:semana,   icon:'📅', bg:'rgba(201,169,110,0.07)', border:'rgba(201,169,110,0.25)', color:'var(--gold)'},
-            ].map(s=>(
-              <div key={s.label} style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:'var(--r)',
-                padding:'16px 18px',display:'flex',alignItems:'center',gap:12}}>
-                <div style={{fontSize:24}}>{s.icon}</div>
-                <div>
-                  <div style={{fontSize:22,fontWeight:800,color:s.color,fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{s.val}</div>
-                  <div style={{fontSize:11,color:'var(--gray)',marginTop:2}}>{s.label}</div>
+          <>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16}}>
+              {[
+                {label:'Vencidos este mes', val:vencidosMes, icon:'🔴', bg:'#fff1f2', border:'#fecdd3', color:'#be123c'},
+                {label:'Vence hoy',         val:hoy,         icon:'⚡', bg:'#fff7ed', border:'#fed7aa', color:'#c2410c'},
+                {label:'Próximos 3 días',   val:proximos3,   icon:'⚠️', bg:'#fffbeb', border:'#fde68a', color:'#b45309'},
+                {label:'Esta semana',       val:semana,      icon:'📅', bg:'rgba(201,169,110,0.07)', border:'rgba(201,169,110,0.25)', color:'var(--gold)'},
+                {label:'Otros meses venc.', val:vencidosOtrosMeses.length, icon:'📂', bg: vencidosOtrosMeses.length>0?'#fff1f2':'var(--white)', border:vencidosOtrosMeses.length>0?'#fecdd3':'rgba(201,169,110,0.12)', color:vencidosOtrosMeses.length>0?'#be123c':'var(--gray)', clickable: vencidosOtrosMeses.length>0, items: vencidosOtrosMeses},
+              ].map(s=>(
+                <div key={s.label}
+                  onClick={s.clickable ? ()=>setVencOtrosMesesModal(s.items) : undefined}
+                  style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:'var(--r)',
+                    padding:'12px 14px',display:'flex',alignItems:'center',gap:10,
+                    cursor:s.clickable?'pointer':'default',
+                    transition:'box-shadow 0.15s',
+                    ...(s.clickable?{boxShadow:'0 2px 8px rgba(192,57,43,0.1)'}:{})}}>
+                  <div style={{fontSize:20}}>{s.icon}</div>
+                  <div>
+                    <div style={{fontSize:20,fontWeight:800,color:s.color,fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{s.val}</div>
+                    <div style={{fontSize:10,color:'var(--gray)',marginTop:2,lineHeight:1.2}}>{s.label}</div>
+                    {s.clickable && <div style={{fontSize:9,color:s.color,marginTop:2}}>clic para ver →</div>}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:'var(--gray)',marginBottom:12,fontFamily:'JetBrains Mono,monospace'}}>
+              Mostrando {MONTHS_FULL[nowD.getMonth()]} {nowD.getFullYear()} · solo obligaciones con clientes asignados
+            </div>
+          </>
         );
       })()}
 
@@ -3441,6 +3502,48 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
                 </div>
               );
             })}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL OTROS MESES VENCIDOS ── */}
+      {vencOtrosMesesModal && (
+        <Modal title="📂 Obligaciones vencidas en meses anteriores" onClose={()=>setVencOtrosMesesModal(null)}
+          footer={<button className="btn btn-ghost btn-sm" onClick={()=>setVencOtrosMesesModal(null)}>Cerrar</button>}>
+          <div style={{marginBottom:12,padding:'10px 14px',background:'#fff1f2',borderRadius:8,fontSize:12,color:'#be123c',border:'1px solid #fecdd3'}}>
+            <strong>{vencOtrosMesesModal.length} obligación{vencOtrosMesesModal.length!==1?'es':''}</strong> vencida{vencOtrosMesesModal.length!==1?'s':''} en meses anteriores con clientes asignados sin completar.
+          </div>
+          <div style={{border:'1px solid var(--cream2)',borderRadius:10,overflow:'hidden'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{background:'linear-gradient(135deg,var(--black),var(--black2))'}}>
+                  {['Obligación','Fecha','Días vencido','Clientes'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:'left',color:'var(--cream)',fontWeight:600,fontSize:11,fontFamily:'JetBrains Mono,monospace'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {groupVenc(vencOtrosMesesModal).map((grupo,i) => {
+                  const dias = Math.abs(daysUntil(grupo.fecha));
+                  const {matched} = getClientesDelGrupo(grupo);
+                  return (
+                    <tr key={grupo.base+grupo.fecha} style={{borderTop:'1px solid var(--cream2)',background:i%2===0?'white':'var(--cream)'}}>
+                      <td style={{padding:'8px 12px',fontWeight:600,color:'var(--black)'}}>{grupo.base}</td>
+                      <td style={{padding:'8px 12px',fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'#be123c',whiteSpace:'nowrap'}}>{fmtDate(grupo.fecha)}</td>
+                      <td style={{padding:'8px 12px',fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'#be123c'}}>{dias}d</td>
+                      <td style={{padding:'8px 12px'}}>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                          {matched.slice(0,4).map(c=>(
+                            <span key={c.id} style={{fontSize:10,padding:'1px 6px',borderRadius:20,background:'rgba(201,169,110,0.12)',border:'1px solid rgba(201,169,110,0.3)',color:'var(--black)',fontWeight:500}}>{c.nombre}</span>
+                          ))}
+                          {matched.length>4 && <span style={{fontSize:10,color:'var(--gray)'}}>+{matched.length-4}</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </Modal>
       )}
