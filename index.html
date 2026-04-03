@@ -983,73 +983,15 @@ function Modal({ title, onClose, children, footer }) {
 function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas }) {
   const activeClients = clients.filter(c => c.estado === 'activo');
   const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
-
-  // ── helpers de matching (igual que en Vencimientos) ──
-  const TRIBUTO_KW_DASH = [
-    { id: 'recat_mono',  words: ['recategori'] },
-    { id: 'monotributo', words: ['monotributo'] },
-    { id: 'autonomos',   words: ['autónomos', 'autonomos'] },
-    { id: 'ganancias',   words: ['ganancias'] },
-    { id: 'iibb_cm',     words: ['convenio multilateral', 'multilateral', 'cm0'] },
-    { id: 'iibb_anual',  words: ['iibb', 'ingresos brutos'], extra: n => n.includes('anual') },
-    { id: 'iibb',        words: ['iibb', 'ingresos brutos'] },
-    { id: 'iva',         words: ['iva'] },
-    { id: 'f931',        words: ['f.931', 'f931', 'suss', 'siradig', 'f572'] },
-    { id: 'bienes_pers', words: ['bienes personales'] },
-    { id: 'imp_sellos',  words: ['sellos'] },
-    { id: 'imp_inmob',   words: ['inmobiliario'] },
-    { id: 'automotores', words: ['automotor', 'patente'] },
-    { id: 'sueldos',     words: ['sueldo', 'remuneracion', 'remuneración'] },
-  ];
-  const getTribIdDash = nombre => {
-    const n = (nombre||'').toLowerCase();
-    for (const e of TRIBUTO_KW_DASH) {
-      if (e.extra && !e.extra(n)) continue;
-      if (e.words.some(w => n.includes(w))) return e.id;
-    }
-    return null;
-  };
-  const getCuitRangeDash = nombre => {
-    const m = (nombre||'').match(/CUIT[^0-9]*term[^0-9]*(\d)\s*[-–y]\s*(\d)/i);
-    if (!m) return null;
-    const from = parseInt(m[1]), to = parseInt(m[2]);
-    return Array.from({length: to-from+1}, (_,i) => from+i);
-  };
-  const hasClientMatch = v => {
-    const tid = getTribIdDash(v.nombre);
-    if (!tid) return false;
-    const range = getCuitRangeDash(v.nombre);
-    return clients.some(c => {
-      if (c.estado === 'inactivo') return false;
-      if (!Array.isArray(c.tributos) || !c.tributos.some(t => t.id === tid)) return false;
-      if (range) {
-        const limpio = (c.cuit||'').replace(/[-\s]/g,'');
-        if (limpio.length < 2) return false;
-        return range.includes(parseInt(limpio[limpio.length-2]));
-      }
-      return true;
-    });
-  };
-
-  // Merge vencimientos fiscales + instancias de tareas recurrentes, solo con match de cliente
-  const tareasComoVenc = (tareas || [])
+  const tareasComoVenc = (tareas||[])
     .filter(t => t.recurrenteId && t.fecha && !t.recurrente && !t.completado)
-    .map(t => ({
-      id: t.id, nombre: '🔁 ' + t.texto,
-      fecha: t.fecha, clientes: t.cliente || '',
-      completado: false, esTareaRecurrente: true,
-    }));
-  const pendientesHoy = [
-    ...vencimientos.filter(v => !v.completado && hasClientMatch(v)),
-    ...tareasComoVenc
-  ]
+    .map(t => ({ id:t.id, nombre:'🔁 '+t.texto, fecha:t.fecha, clientes:t.cliente||'', completado:false, esTareaRecurrente:true }));
+  const pendientesHoy = [...vencimientos.filter(v=>!v.completado), ...tareasComoVenc]
     .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
     .slice(0, 6);
-
   const tareasP = tareas.filter(t => !t.completado).slice(0, 5);
   const saldosPendientes = clients.reduce((s, c) => s + (c.saldoPendiente || 0), 0);
-  // Urgentes: solo los que tienen match con algún cliente
-  const vencUrgentes = vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 7 && hasClientMatch(v)).length;
+  const vencUrgentes = vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 7).length;
 
   const now = new Date();
   const dateDisplay = `${now.getDate()} de ${MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`;
@@ -1087,7 +1029,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           <div className="stat-delta">De un total de {clients.length} registrados</div>
           <div className="stat-card-arrow">→</div>
         </div>
-        <div className="stat-card stat-card-link" onClick={()=>setSection('vencimientos')} title="Ver vencimientos">
+        <div className="stat-card stat-card-link" onClick={()=>setSection('facturacion')} title="Ver facturación">
           <div className="stat-icon">💰</div>
           <div className="stat-label">Ingresos Mensuales</div>
           <div className="stat-value gold">{fmtShort(totalMensual)}</div>
@@ -1098,7 +1040,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           <div className="stat-icon">📅</div>
           <div className="stat-label">Vencimientos Próximos</div>
           <div className="stat-value" style={{color: vencUrgentes > 0 ? 'var(--red)' : 'var(--black)'}}>
-            {vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 30 && hasClientMatch(v)).length}
+            {vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 30).length}
           </div>
           <div className="stat-delta" style={{color: vencUrgentes > 0 ? 'var(--red)' : ''}}>
             {vencUrgentes > 0 ? `${vencUrgentes} urgentes` : 'En los próximos 30 días'}
@@ -1121,26 +1063,13 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
       <div className="grid-6040" style={{marginBottom:24}}>
         {/* VENCIMIENTOS */}
         <div className="card">
-          <div className="card-title"><span>📅</span> Próximos Vencimientos <span style={{fontSize:11,fontWeight:400,color:'var(--gray)',marginLeft:4}}>— con clientes</span></div>
+          <div className="card-title"><span>📅</span> Próximos Vencimientos</div>
           {pendientesHoy.length === 0
-            ? <div className="empty-state"><div className="empty-icon">🎉</div><p>Sin vencimientos próximos con clientes asignados</p></div>
+            ? <div className="empty-state"><div className="empty-icon">🎉</div><p>Sin vencimientos próximos</p></div>
             : pendientesHoy.map(v => {
               const days = daysUntil(v.fecha);
               const uc = urgencyClass(days);
               const d = new Date(v.fecha + 'T12:00:00');
-              // Get matched clients for this vencimiento
-              const tid = getTribIdDash(v.nombre);
-              const range = getCuitRangeDash(v.nombre);
-              const matchedClients = tid ? clients.filter(c => {
-                if (c.estado === 'inactivo') return false;
-                if (!Array.isArray(c.tributos) || !c.tributos.some(t => t.id === tid)) return false;
-                if (range) {
-                  const limpio = (c.cuit||'').replace(/[-\s]/g,'');
-                  if (limpio.length < 2) return false;
-                  return range.includes(parseInt(limpio[limpio.length-2]));
-                }
-                return true;
-              }) : [];
               return (
                 <div className="venc-item" key={v.id}>
                   <div className={`venc-date-box ${uc}`}>
@@ -1150,11 +1079,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
                   <div className="venc-info">
                     <div className="venc-name">{v.nombre}</div>
                     <div className="venc-client">
-                      {matchedClients.length > 0
-                        ? <>{matchedClients.slice(0,2).map(c=>c.nombre).join(', ')}{matchedClients.length > 2 ? ` +${matchedClients.length-2}` : ''}</>
-                        : (v.clientes || '—')
-                      }
-                      {' · '}{days < 0 ? <span style={{color:'var(--red)', fontWeight:600}}>Vencido</span> : days === 0 ? <span style={{color:'var(--red)', fontWeight:600}}>HOY</span> : `${days}d`}
+                      {v.clientes} · {days < 0 ? <span style={{color:'var(--red)', fontWeight:600}}>Vencido</span> : days === 0 ? <span style={{color:'var(--red)', fontWeight:600}}>HOY</span> : `${days}d`}
                     </div>
                   </div>
                   <span className={`badge badge-${uc === 'urgent' ? 'red' : uc === 'soon' ? 'amber' : 'green'}`}>
@@ -1395,7 +1320,7 @@ function ClientNotas({ cliente }) {
   );
 }
 
-// ── TAREAS RECURRENTES ───────────────────────────────
+// ── TAREAS RECURRENTES (pestaña dentro de detalle de cliente) ────────
 function TareasRecurrentes({ cliente, tareas, setTareas }) {
   const [texto, setTexto]           = useState('');
   const [frecuencia, setFrecuencia] = useState('mensual');
@@ -1403,86 +1328,78 @@ function TareasRecurrentes({ cliente, tareas, setTareas }) {
   const [saving, setSaving]         = useState(false);
 
   const templates = tareas.filter(t => t.recurrente && t.clienteId === cliente.id);
-
   const thisMonth = todayStr.slice(0, 7);
   const instances = tareas.filter(t =>
-    !t.recurrente && t.clienteId === cliente.id &&
-    t.recurrenteId && (t.fecha || '').startsWith(thisMonth)
+    !t.recurrente && t.clienteId===cliente.id &&
+    t.recurrenteId && (t.fecha||'').startsWith(thisMonth)
   );
 
-  // Generar instancias del mes si no existen
   useEffect(() => {
     if (!templates.length) return;
     const monthNum = parseInt(thisMonth.split('-')[1]);
     const toCreate = [];
     templates.forEach(tmpl => {
       const freq = tmpl.frecuencia || 'mensual';
-      if (freq === 'bimestral'  && monthNum % 2 !== 1) return;
-      if (freq === 'trimestral' && ![1,4,7,10].includes(monthNum)) return;
-      const alreadyExists = tareas.some(t =>
-        t.recurrenteId === tmpl.id && (t.fecha || '').startsWith(thisMonth)
-      );
-      if (!alreadyExists) {
-        const yr  = parseInt(thisMonth.split('-')[0]);
-        const d   = Math.min(parseInt(tmpl.dia || 1), new Date(yr, monthNum, 0).getDate());
-        const fecha = `${thisMonth}-${String(d).padStart(2,'0')}`;
+      if (freq==='bimestral'  && monthNum%2!==1) return;
+      if (freq==='trimestral' && ![1,4,7,10].includes(monthNum)) return;
+      const exists = tareas.some(t => t.recurrenteId===tmpl.id && (t.fecha||'').startsWith(thisMonth));
+      if (!exists) {
+        const yr = parseInt(thisMonth.split('-')[0]);
+        const d  = Math.min(parseInt(tmpl.dia||1), new Date(yr, monthNum, 0).getDate());
         toCreate.push({
-          texto: tmpl.texto, clienteId: cliente.id, cliente: cliente.nombre,
-          recurrenteId: tmpl.id, fecha, completado: false, recurrente: false,
+          texto:tmpl.texto, clienteId:cliente.id, cliente:cliente.nombre,
+          recurrenteId:tmpl.id, fecha:`${thisMonth}-${String(d).padStart(2,'0')}`,
+          completado:false, recurrente:false,
         });
       }
     });
     if (!toCreate.length) return;
     Promise.all(toCreate.map(async task => {
       try {
-        const ref = await FB().addDoc(FB().collection(FB().db,'tareas'), {...task, createdAt: FB().serverTimestamp()});
-        return {...task, id: ref.id};
-      } catch(e) { return {...task, id: 'local-'+Date.now()+Math.random()}; }
-    })).then(created => setTareas(prev => [...prev, ...created]));
+        const ref = await FB().addDoc(FB().collection(FB().db,'tareas'),{...task,createdAt:FB().serverTimestamp()});
+        return {...task, id:ref.id};
+      } catch(e) { return {...task, id:'local-'+Date.now()+Math.random()}; }
+    })).then(created => setTareas(prev=>[...prev,...created]));
   }, [templates.length, thisMonth, cliente.id]);
 
   const addTemplate = async () => {
     if (!texto.trim()) return;
     setSaving(true);
-    const tmpl = {
-      texto: texto.trim(), clienteId: cliente.id, cliente: cliente.nombre,
-      frecuencia, dia: parseInt(dia), recurrente: true, completado: false,
-    };
+    const tmpl = { texto:texto.trim(), clienteId:cliente.id, cliente:cliente.nombre,
+      frecuencia, dia:parseInt(dia), recurrente:true, completado:false };
     try {
-      const ref = await FB().addDoc(FB().collection(FB().db,'tareas'), {...tmpl, createdAt: FB().serverTimestamp()});
-      setTareas(prev => [...prev, {...tmpl, id: ref.id}]);
-    } catch(e) { setTareas(prev => [...prev, {...tmpl, id: 'local-'+Date.now()}]); }
+      const ref = await FB().addDoc(FB().collection(FB().db,'tareas'),{...tmpl,createdAt:FB().serverTimestamp()});
+      setTareas(prev=>[...prev,{...tmpl,id:ref.id}]);
+    } catch(e) { setTareas(prev=>[...prev,{...tmpl,id:'local-'+Date.now()}]); }
     setTexto(''); setSaving(false);
   };
 
   const deleteTemplate = async (id) => {
-    const r = await Swal.fire({ title:'¿Eliminar template?', text:'Las instancias ya generadas no se borran.',
-      icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar',
-      customClass:{popup:'swal-ap'}, reverseButtons:true });
+    const r = await Swal.fire({title:'¿Eliminar template?',text:'Las instancias ya generadas no se borran.',
+      icon:'warning',showCancelButton:true,confirmButtonText:'Sí, eliminar',cancelButtonText:'Cancelar',
+      customClass:{popup:'swal-ap'},reverseButtons:true});
     if (!r.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'tareas',id)); } catch(e){}
-    setTareas(prev => prev.filter(t => t.id !== id));
+    setTareas(prev=>prev.filter(t=>t.id!==id));
   };
 
   const toggleInstance = async (id) => {
-    const t = tareas.find(x => x.id === id);
-    try { await FB().updateDoc(FB().doc(FB().db,'tareas',id), {completado:!t.completado}); } catch(e){}
-    setTareas(prev => prev.map(x => x.id===id ? {...x,completado:!x.completado} : x));
+    const t = tareas.find(x=>x.id===id);
+    try { await FB().updateDoc(FB().doc(FB().db,'tareas',id),{completado:!t.completado}); } catch(e){}
+    setTareas(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
   };
 
-  const FREQ_LABEL = { mensual:'Mensual', bimestral:'Bimestral', trimestral:'Trimestral' };
+  const FREQ = {mensual:'Mensual',bimestral:'Bimestral',trimestral:'Trimestral'};
 
   return (
     <div>
-      {/* Formulario nuevo template */}
       <div className="card" style={{marginBottom:20}}>
         <div className="card-title" style={{marginBottom:16}}><span>➕</span> Nueva Tarea Recurrente</div>
         <div className="form-grid-3" style={{alignItems:'end'}}>
           <div className="form-group" style={{marginBottom:0}}>
             <label className="form-label">Descripción</label>
             <input className="form-input" value={texto} onChange={e=>setTexto(e.target.value)}
-              placeholder="Ej: Presentar DDJJ mensual"
-              onKeyDown={e=>e.key==='Enter'&&addTemplate()} />
+              placeholder="Ej: Presentar DDJJ mensual" onKeyDown={e=>e.key==='Enter'&&addTemplate()} />
           </div>
           <div className="form-group" style={{marginBottom:0}}>
             <label className="form-label">Frecuencia</label>
@@ -1495,82 +1412,66 @@ function TareasRecurrentes({ cliente, tareas, setTareas }) {
           <div className="form-group" style={{marginBottom:0}}>
             <label className="form-label">Día del mes</label>
             <input className="form-input" type="number" min="1" max="28" value={dia}
-              onChange={e=>setDia(e.target.value)} placeholder="1-28" />
+              onChange={e=>setDia(e.target.value)} />
           </div>
         </div>
-        <button className="btn btn-gold" style={{marginTop:14}}
-          onClick={addTemplate} disabled={saving||!texto.trim()}>
+        <button className="btn btn-gold" style={{marginTop:14}} onClick={addTemplate} disabled={saving||!texto.trim()}>
           {saving?'⏳ Guardando...':'+ Agregar Template'}
         </button>
       </div>
-
-      {/* Lista de templates */}
       <div className="card" style={{marginBottom:20}}>
         <div className="card-title" style={{marginBottom:14}}><span>📋</span> Templates Activos ({templates.length})</div>
-        {templates.length === 0
-          ? <div style={{color:'var(--gray)',fontSize:13,padding:'20px 0',textAlign:'center'}}>
-              Sin templates. Creá uno arriba.
-            </div>
-          : <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {templates.map(t => (
-                <div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-                  padding:'10px 14px',background:'var(--cream)',borderRadius:'var(--r2)',
-                  border:'1px solid rgba(201,169,110,0.2)'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:12}}>
-                    <span style={{fontSize:18}}>🔁</span>
-                    <div>
-                      <div style={{fontWeight:600,fontSize:14}}>{t.texto}</div>
-                      <div style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',marginTop:2}}>
-                        {FREQ_LABEL[t.frecuencia]||t.frecuencia} · día {t.dia}
-                      </div>
-                    </div>
+        {!templates.length
+          ? <div style={{color:'var(--gray)',fontSize:13,textAlign:'center',padding:'20px 0'}}>Sin templates. Creá uno arriba.</div>
+          : templates.map(t=>(
+            <div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+              padding:'10px 14px',background:'var(--cream)',borderRadius:'var(--r2)',marginBottom:8,
+              border:'1px solid rgba(201,169,110,0.2)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <span>🔁</span>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14}}>{t.texto}</div>
+                  <div style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',marginTop:2}}>
+                    {FREQ[t.frecuencia]||t.frecuencia} · día {t.dia}
                   </div>
-                  <button className="btn-icon trash" onClick={()=>deleteTemplate(t.id)} title="Eliminar">🗑️</button>
                 </div>
-              ))}
+              </div>
+              <button className="btn-icon trash" onClick={()=>deleteTemplate(t.id)}>🗑️</button>
             </div>
+          ))
         }
       </div>
-
-      {/* Instancias del mes */}
       <div className="card">
         <div className="card-title" style={{marginBottom:14}}>
-          <span>📅</span> Instancias — {MONTHS_FULL[parseInt(thisMonth.split('-')[1])-1]} {thisMonth.split('-')[0]}
+          <span>📅</span> {MONTHS_FULL[parseInt(thisMonth.split('-')[1])-1]} {thisMonth.split('-')[0]}
         </div>
-        {instances.length === 0
-          ? <div style={{color:'var(--gray)',fontSize:13,padding:'20px 0',textAlign:'center'}}>
-              {templates.length===0
-                ? 'Creá templates para generar instancias automáticamente.'
-                : 'No hay instancias para este mes todavía.'}
+        {!instances.length
+          ? <div style={{color:'var(--gray)',fontSize:13,textAlign:'center',padding:'20px 0'}}>
+              {templates.length?'Sin instancias este mes aún.':'Creá templates primero.'}
             </div>
-          : <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {instances.map(t => (
-                <div key={t.id} onClick={()=>toggleInstance(t.id)}
-                  style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',cursor:'pointer',
-                    background:t.completado?'var(--green2)':'var(--cream)',borderRadius:'var(--r2)',
-                    border:`1px solid ${t.completado?'rgba(34,197,94,0.3)':'rgba(201,169,110,0.15)'}`,
-                    transition:'all 0.15s'}}>
-                  <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
-                    background:t.completado?'var(--green)':'transparent',
-                    border:`2px solid ${t.completado?'var(--green)':'rgba(201,169,110,0.5)'}`,
-                    display:'flex',alignItems:'center',justifyContent:'center',
-                    fontSize:12,color:'white',fontWeight:700}}>
-                    {t.completado?'✓':''}
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:500,fontSize:14,
-                      textDecoration:t.completado?'line-through':'none',
-                      color:t.completado?'var(--gray)':'var(--black)'}}>{t.texto}</div>
-                    <div style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',marginTop:2}}>
-                      Vence: {fmtDate(t.fecha)}
-                    </div>
-                  </div>
-                  <span className={`badge ${t.completado?'badge-green':'badge-amber'}`} style={{fontSize:10}}>
-                    {t.completado?'✓ Hecha':'Pendiente'}
-                  </span>
+          : instances.map(t=>(
+            <div key={t.id} onClick={()=>toggleInstance(t.id)}
+              style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',cursor:'pointer',
+                background:t.completado?'var(--green2)':'var(--cream)',borderRadius:'var(--r2)',marginBottom:8,
+                border:`1px solid ${t.completado?'rgba(34,197,94,0.3)':'rgba(201,169,110,0.15)'}`,transition:'all 0.15s'}}>
+              <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
+                background:t.completado?'var(--green)':'transparent',
+                border:`2px solid ${t.completado?'var(--green)':'rgba(201,169,110,0.5)'}`,
+                display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'white',fontWeight:700}}>
+                {t.completado?'✓':''}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:500,fontSize:14,textDecoration:t.completado?'line-through':'none',
+                  color:t.completado?'var(--gray)':'var(--black)'}}>{t.texto}</div>
+                <div style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',marginTop:2}}>
+                  Vence: {fmtDate(t.fecha)}
                 </div>
-              ))}
+              </div>
+              <span className={`badge ${t.completado?'badge-green':'badge-amber'}`} style={{fontSize:10}}>
+                {t.completado?'✓ Hecha':'Pendiente'}
+              </span>
             </div>
+          ))
         }
       </div>
     </div>
@@ -2155,30 +2056,30 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
         : (
           <div className="card" style={{padding:0,overflow:'hidden'}}>
             <div className="table-wrap">
-              <table style={{fontSize:13}}>
+              <table>
                 <thead><tr>
-                  <th style={{paddingLeft:12,paddingTop:8,paddingBottom:8}}>Cliente</th><th>CUIT</th><th>Tipo</th>
+                  <th style={{paddingLeft:16}}>Cliente</th><th>CUIT</th><th>Tipo</th>
                   <th>Servicio</th><th>Tributos</th><th>Honorario</th><th>Saldo</th><th>Estado</th><th></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map(c=>(
                     <tr key={c.id} className="client-row" onClick={()=>openDetail(c)}>
-                      <td style={{paddingLeft:12,paddingTop:6,paddingBottom:6}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <div style={{width:28,height:28,borderRadius:7,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:11,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
+                      <td style={{paddingLeft:16}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{width:34,height:34,borderRadius:9,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
                           <div>
-                            <div style={{fontWeight:600,fontSize:13,lineHeight:1.2}}>{c.nombre}</div>
-                            {c.email&&<div style={{fontSize:10,color:'var(--gray)'}}>{c.email}</div>}
+                            <div style={{fontWeight:600,fontSize:14}}>{c.nombre}</div>
+                            {c.email&&<div style={{fontSize:11,color:'var(--gray)'}}>{c.email}</div>}
                           </div>
                         </div>
                       </td>
-                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'var(--gray)'}}>{c.cuit||'—'}</td>
-                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>{c.tipo==='sociedad'?'🏢 Soc.':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
-                      <td style={{fontSize:11,color:'var(--gray)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
-                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:9}}>{(c.tributos||[]).length} trib.</span>:<span style={{color:'var(--gray2)',fontSize:11}}>—</span>}</td>
-                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
-                      <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:11}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:9}}>✓</span>}</td>
-                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:9}}>{c.estado}</span></td>
+                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gray)'}}>{c.cuit||'—'}</td>
+                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
+                      <td style={{fontSize:12,color:'var(--gray)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
+                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} tributo{(c.tributos||[]).length>1?'s':''}</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
+                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
+                      <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
+                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
                     <td onClick={e=>e.stopPropagation()}>
                       <div className="action-btns">
                         <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
@@ -2211,6 +2112,7 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
 const MEDIOS_PAGO = [
   { id: 'efectivo',    label: 'Efectivo',       icon: '💵', subs: [] },
   { id: 'transferencia', label: 'Transferencia', icon: '🏦', subs: ['Banco Provincia','Banco Nación','Banco Galicia','Mercado Pago','BBVA','HSBC','Otro banco'] },
+  { id: 'cheque',      label: 'Cheque',         icon: '📄', subs: [] },
   { id: 'mp',          label: 'Mercado Pago',   icon: '💙', subs: [] },
 ];
 const NATURALEZAS_COBRO = [
@@ -2222,35 +2124,22 @@ const NATURALEZAS_COBRO = [
 
 function Cobros({ clients, setClients, cobros, setCobros }) {
   const [modal, setModal]     = useState(false);
-  const [editItem, setEditItem] = useState(null);
+  const [editItem, setEditItem] = useState(null); // cobro being edited
   const [form, setForm]       = useState({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
   const [saving, setSaving]   = useState(false);
   const [filter, setFilter]   = useState('todos');
-  const nowDate = new Date();
-  const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}`;
-  const [mesSeleccionado, setMesSeleccionado] = useState(currentMonthKey);
-
-  // Build list of available months from cobros
-  const mesesDisponibles = [...new Set(cobros.map(c=>(c.fecha||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  if (!mesesDisponibles.includes(currentMonthKey)) mesesDisponibles.unshift(currentMonthKey);
 
   const clientesConDeuda = clients.filter(c => c.saldoPendiente > 0);
 
-  const cobrosMes = cobros.filter(c => c.fecha && c.fecha.startsWith(mesSeleccionado));
-  const filtered = (filter==='todos' ? cobrosMes : cobrosMes.filter(c => c.medio===filter))
-    .sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+  const filtered = filter==='todos' ? cobros :
+    cobros.filter(c => c.medio===filter);
 
-  const totalMes = cobrosMes.reduce((s,c) => s+(c.monto||0),0);
+  const totalMes = cobros
+    .filter(c => c.fecha && c.fecha.startsWith(todayStr.slice(0,7)))
+    .reduce((s,c) => s+(c.monto||0),0);
   const totalGeneral = cobros.reduce((s,c) => s+(c.monto||0),0);
 
   const selectedClient = clients.find(c=>c.id===form.clienteId);
-
-  // Format month label
-  const fmtMesLabel = key => {
-    if (!key) return '';
-    const [y,m] = key.split('-');
-    return `${MONTHS_FULL[parseInt(m)-1]} ${y}`;
-  };
 
   const handleSave = async () => {
     if (!form.clienteId || !form.monto || !form.fecha) return;
@@ -2315,26 +2204,16 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   };
 
   const medioActual = MEDIOS_PAGO.find(m=>m.id===form.medio);
-  const MEDIO_LABEL = {efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',mp:'💙 Mercado Pago'};
+  const MEDIO_LABEL = {efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',cheque:'📄 Cheque',mp:'💙 Mercado Pago'};
 
   return (
     <div>
       <div className="page-header">
         <div>
           <div className="page-title">Cobros</div>
-          <div className="page-subtitle">{fmtMesLabel(mesSeleccionado)} · {cobrosMes.length} registro{cobrosMes.length!==1?'s':''}</div>
+          <div className="page-subtitle">Registrá cobros y generá recibos · {cobros.length} registros</div>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <select
-            value={mesSeleccionado}
-            onChange={e=>setMesSeleccionado(e.target.value)}
-            style={{padding:'8px 12px',borderRadius:'var(--r2)',border:'1.5px solid rgba(201,169,110,0.3)',
-              fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:600,
-              background:'var(--white)',color:'var(--black)',cursor:'pointer'}}>
-            {mesesDisponibles.map(m=>(
-              <option key={m} value={m}>{fmtMesLabel(m)}{m===currentMonthKey?' (actual)':''}</option>
-            ))}
-          </select>
+        <div style={{display:'flex',gap:8}}>
           <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
             filtered.map(c=>({'N° Recibo':c.nroRecibo||'','Fecha':c.fecha,'Cliente':c.cliente,'Naturaleza':c.naturaleza,'Medio':c.medio+(c.submedio?' · '+c.submedio:''),'Monto':c.monto,'Notas':c.notas||''})),
             'Cobros'
@@ -2352,18 +2231,16 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
         </div>
       )}
 
-      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:16}}>
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
         <div className="stat-card">
           <div className="stat-icon">💰</div>
-          <div className="stat-label">Cobrado en {fmtMesLabel(mesSeleccionado)}</div>
+          <div className="stat-label">Cobrado este mes</div>
           <div className="stat-value gold">{fmtShort(totalMes)}</div>
-          <div className="stat-delta">{cobrosMes.length} cobro{cobrosMes.length!==1?'s':''} en el período</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">📊</div>
           <div className="stat-label">Total histórico</div>
           <div className="stat-value">{fmtShort(totalGeneral)}</div>
-          <div className="stat-delta">{cobros.length} registros totales</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">⏳</div>
@@ -2371,12 +2248,11 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
           <div className="stat-value" style={{color:clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0)>0?'var(--amber)':'var(--green)'}}>
             {fmtShort(clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0))}
           </div>
-          <div className="stat-delta">{clientesConDeuda.length} cliente{clientesConDeuda.length!==1?'s':''} con saldo</div>
         </div>
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-        {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago']].map(([f,l])=>(
+        {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago'],['cheque','📄 Cheque']].map(([f,l])=>(
           <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
         ))}
       </div>
@@ -2390,7 +2266,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
             </tr></thead>
             <tbody>
               {filtered.length===0
-                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">💰</div><p>Sin cobros en {fmtMesLabel(mesSeleccionado)}</p></div></td></tr>
+                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">💰</div><p>Sin cobros registrados</p></div></td></tr>
                 : filtered.map(c=>(
                   <tr key={c.id}>
                     <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,whiteSpace:'nowrap'}}>{fmtDate(c.fecha)}</td>
@@ -2495,7 +2371,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   );
 }
 
-// ── VENCIMIENTOS (LISTADO POR CLIENTE) ────────────────
+// ── VENCIMIENTOS (CALENDARIO) ────────────────────────
 function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTareas }) {
   const now = new Date();
   const [calYear,  setCalYear]  = useState(now.getFullYear());
@@ -2507,11 +2383,6 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
   const [showImport, setShowImport]       = useState(false);
   const [vencDetail, setVencDetail]       = useState(null); // grupo para modal detalle
   const [debugDay, setDebugDay]           = useState(null); // debug modal
-  const [listSearch, setListSearch]       = useState('');
-  const [listFilter, setListFilter]       = useState('pendientes');
-  const [listSort,   setListSort]         = useState('fecha');
-  const [listScope,  setListScope]        = useState('con_clientes');
-  const [vencOtrosMesesModal, setVencOtrosMesesModal] = useState(null);
 
   // helpers
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
@@ -2632,23 +2503,19 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
     if (!byDate[v.fecha]) byDate[v.fecha] = [];
     byDate[v.fecha].push(v);
   });
-  // Inyectar instancias de tareas recurrentes como entradas virtuales
-  (tareas || []).filter(t => t.recurrenteId && t.fecha && !t.recurrente).forEach(t => {
+  // Instancias de tareas recurrentes → aparecen en el calendario
+  (tareas||[]).filter(t => t.recurrenteId && t.fecha && !t.recurrente).forEach(t => {
     if (!byDate[t.fecha]) byDate[t.fecha] = [];
-    byDate[t.fecha].push({
-      id: t.id, nombre: '🔁 ' + t.texto,
-      tipo: 'tarea', fecha: t.fecha,
-      clientes: t.cliente || '', clienteId: t.clienteId || '',
-      completado: t.completado, esTareaRecurrente: true,
-    });
+    byDate[t.fecha].push({ id:t.id, nombre:'🔁 '+t.texto, tipo:'tarea',
+      fecha:t.fecha, clientes:t.cliente||'', clienteId:t.clienteId||'',
+      completado:t.completado, esTareaRecurrente:true });
   });
 
   // vencimientos for selected day
   const dayVenc = (byDate[selDate] || []).sort((a,b)=>a.completado-b.completado);
 
   const toggle = async (id) => {
-    // Si es instancia de tarea recurrente, actualizar en colección 'tareas'
-    const esTarea = (tareas||[]).find(x => x.id === id && x.recurrenteId);
+    const esTarea = (tareas||[]).find(x => x.id===id && x.recurrenteId);
     if (esTarea) {
       try { await FB().updateDoc(FB().doc(FB().db,'tareas',id),{completado:!esTarea.completado}); } catch(e){}
       setTareas(prev => prev.map(x => x.id===id ? {...x,completado:!x.completado} : x));
@@ -2832,85 +2699,28 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
     setModal('form');
   };
 
-  // ── Construir filas del listado: una fila por (cliente × vencimiento_grupo) ──
-  const buildListRows = () => {
-    // Agrupar vencimientos pendientes (o todos) por nombre base + fecha
-    const allVenc = listFilter === 'todos'
-      ? vencimientos
-      : listFilter === 'vencidos'
-        ? vencimientos.filter(v => !v.completado && daysUntil(v.fecha) < 0)
-        : listFilter === 'completados'
-          ? vencimientos.filter(v => v.completado)
-          : vencimientos.filter(v => !v.completado && daysUntil(v.fecha) >= -30);
-
-    const grupos = groupVenc(allVenc);
-    const rows = [];
-
-    grupos.forEach(grupo => {
-      const dias = daysUntil(grupo.fecha);
-      const allDone = grupo.items.every(x => x.completado);
-      if (listFilter === 'pendientes' && allDone) return;
-      if (listFilter === 'completados' && !allDone) return;
-
-      const { matched, fallbackText } = getClientesDelGrupo(grupo);
-
-      if (matched.length > 0) {
-        matched.forEach(cliente => {
-          rows.push({ grupo, cliente, dias, allDone, ids: grupo.items.map(x=>x.id), hasClientMatch: true });
-        });
-      } else {
-        // vencimiento sin match de cliente
-        if (listScope === 'todas') {
-          rows.push({ grupo, cliente: null, clienteFallback: fallbackText, dias, allDone, ids: grupo.items.map(x=>x.id), hasClientMatch: false });
-        }
-        // si listScope === 'con_clientes' simplemente no se agrega
-      }
-    });
-
-    // Filtro por búsqueda
-    const q = listSearch.toLowerCase();
-    const filtered = q
-      ? rows.filter(r =>
-          (r.cliente?.nombre||r.clienteFallback||'').toLowerCase().includes(q) ||
-          r.grupo.base.toLowerCase().includes(q)
-        )
-      : rows;
-
-    // Orden
-    filtered.sort((a,b) => {
-      if (listSort === 'cliente') return (a.cliente?.nombre||a.clienteFallback||'zzz').localeCompare(b.cliente?.nombre||b.clienteFallback||'zzz') || new Date(a.grupo.fecha)-new Date(b.grupo.fecha);
-      if (listSort === 'dias')    return a.dias - b.dias;
-      return new Date(a.grupo.fecha) - new Date(b.grupo.fecha) || (a.cliente?.nombre||'').localeCompare(b.cliente?.nombre||'');
-    });
-
-    return filtered;
+  // dot color for a date
+  const dotColor = (dateStr) => {
+    const vs = byDate[dateStr]||[];
+    if (!vs.length) return null;
+    const pending = vs.filter(v=>!v.completado);
+    if (!pending.length) return 'var(--green)';
+    const hasUrgent = pending.some(v=>daysUntil(dateStr)<=7);
+    return hasUrgent ? 'var(--red)' : 'var(--gold)';
   };
 
-  // Colores de urgencia
-  const urgencyStyle = (dias, completado) => {
-    if (completado) return { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d', badge: '#dcfce7', badgeText: '#166534' };
-    if (dias < 0)   return { bg: '#fff1f2', border: '#fecdd3', text: '#be123c', badge: '#fecdd3', badgeText: '#be123c' }; // vencido
-    if (dias === 0) return { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c', badge: '#fed7aa', badgeText: '#c2410c' }; // hoy
-    if (dias <= 3)  return { bg: '#fff7ed', border: '#fcd34d', text: '#b45309', badge: '#fef3c7', badgeText: '#92400e' }; // urgente
-    if (dias <= 7)  return { bg: '#fffbeb', border: '#fde68a', text: '#d97706', badge: '#fef9c3', badgeText: '#a16207' }; // próximo
-    if (dias <= 15) return { bg: '#fefce8', border: 'rgba(201,169,110,0.3)', text: '#854d0e', badge: 'rgba(201,169,110,0.15)', badgeText: '#92400e' }; // en 2 semanas
-    return { bg: 'var(--white)', border: 'rgba(201,169,110,0.12)', text: 'var(--gray)', badge: 'var(--cream2)', badgeText: 'var(--gray)' }; // normal
-  };
-
-  const diasLabel = (dias, completado) => {
-    if (completado) return '✓ Completado';
-    if (dias < 0)   return `Venció hace ${Math.abs(dias)} día${Math.abs(dias)!==1?'s':''}`;
-    if (dias === 0) return '⚡ Vence hoy';
-    if (dias === 1) return '⚠️ Mañana';
-    return `${dias} días`;
-  };
+  const days = daysInMonth(calYear, calMonth);
+  const firstDay = firstDow(calYear, calMonth);  // 0=Sun
+  // adjust to Mon-start: 0=Mon…6=Sun
+  const startOffset = (firstDay + 6) % 7;
+  const DOW_LABELS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">Vencimientos por Cliente</div>
-          <div className="page-subtitle">Obligaciones fiscales · cruzadas con perfil de cada cliente</div>
+          <div className="page-title">Agenda de Vencimientos</div>
+          <div className="page-subtitle">Calendario fiscal · {MONTHS_FULL[calMonth]} {calYear}</div>
         </div>
         <div style={{display:'flex',gap:10}}>
           <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
@@ -2922,297 +2732,433 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
         </div>
       </div>
 
-      {/* ── RESUMEN ESTADÍSTICAS ── */}
+      {/* ── PANEL UNIFICADO: Agenda próximos 30 días ── */}
       {(() => {
-        const nowD = new Date();
-        const mesActual = `${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,'0')}`;
-        // Solo vencimientos con match de cliente
-        const conCliente = v => {
-          const tid = getTributoId(v.nombre);
-          if (!tid) return false;
-          const range = getCuitRange(v.nombre);
-          return clients.some(c => {
-            if (c.estado === 'inactivo') return false;
-            if (!Array.isArray(c.tributos) || !c.tributos.some(t => t.id === tid)) return false;
-            if (range) {
-              const limpio = (c.cuit||'').replace(/[-\s]/g,'');
-              if (limpio.length < 2) return false;
-              return range.includes(parseInt(limpio[limpio.length-2]));
-            }
-            return true;
-          });
-        };
-        const esMesActual = v => (v.fecha||'').startsWith(mesActual);
-        const vMesConCliente = vencimientos.filter(v => esMesActual(v) && conCliente(v));
-        const vencidosMes = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) < 0).length;
-        const hoy = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) === 0).length;
-        const proximos3 = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) > 0 && daysUntil(v.fecha) <= 3).length;
-        const semana = vMesConCliente.filter(v => !v.completado && daysUntil(v.fecha) > 3 && daysUntil(v.fecha) <= 7).length;
-        // Vencidos de meses anteriores con cliente
-        const vencidosOtrosMeses = vencimientos.filter(v => !v.completado && !esMesActual(v) && daysUntil(v.fecha) < 0 && conCliente(v));
+        const hoy = new Date();
+        // Combinar vencimientos fiscales + tareas normales (con fecha) + instancias recurrentes
+        const todasTareas = (tareas||[]).filter(t => !t.recurrente && t.fecha && !t.completado);
+        const todoVenc    = vencimientos.filter(v => !v.completado);
+        const items = [
+          ...todoVenc.map(v => ({ ...v, _tipo: 'fiscal' })),
+          ...todasTareas.map(t => ({ ...t, nombre: t.texto, clientes: t.cliente||'', _tipo: t.recurrenteId ? 'recurrente' : 'tarea' })),
+        ]
+        .filter(x => {
+          const d = daysUntil(x.fecha);
+          return d >= -1 && d <= 30;
+        })
+        .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+
+        if (!items.length) return null;
+
+        // Group by date
+        const porFecha = {};
+        items.forEach(x => {
+          if (!porFecha[x.fecha]) porFecha[x.fecha] = [];
+          porFecha[x.fecha].push(x);
+        });
+        const fechas = Object.keys(porFecha).sort();
 
         return (
-          <>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16}}>
-              {[
-                {label:'Vencidos este mes', val:vencidosMes, icon:'🔴', bg:'#fff1f2', border:'#fecdd3', color:'#be123c'},
-                {label:'Vence hoy',         val:hoy,         icon:'⚡', bg:'#fff7ed', border:'#fed7aa', color:'#c2410c'},
-                {label:'Próximos 3 días',   val:proximos3,   icon:'⚠️', bg:'#fffbeb', border:'#fde68a', color:'#b45309'},
-                {label:'Esta semana',       val:semana,      icon:'📅', bg:'rgba(201,169,110,0.07)', border:'rgba(201,169,110,0.25)', color:'var(--gold)'},
-                {label:'Otros meses venc.', val:vencidosOtrosMeses.length, icon:'📂', bg: vencidosOtrosMeses.length>0?'#fff1f2':'var(--white)', border:vencidosOtrosMeses.length>0?'#fecdd3':'rgba(201,169,110,0.12)', color:vencidosOtrosMeses.length>0?'#be123c':'var(--gray)', clickable: vencidosOtrosMeses.length>0, items: vencidosOtrosMeses},
-              ].map(s=>(
-                <div key={s.label}
-                  onClick={s.clickable ? ()=>setVencOtrosMesesModal(s.items) : undefined}
-                  style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:'var(--r)',
-                    padding:'12px 14px',display:'flex',alignItems:'center',gap:10,
-                    cursor:s.clickable?'pointer':'default',
-                    transition:'box-shadow 0.15s',
-                    ...(s.clickable?{boxShadow:'0 2px 8px rgba(192,57,43,0.1)'}:{})}}>
-                  <div style={{fontSize:20}}>{s.icon}</div>
-                  <div>
-                    <div style={{fontSize:20,fontWeight:800,color:s.color,fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{s.val}</div>
-                    <div style={{fontSize:10,color:'var(--gray)',marginTop:2,lineHeight:1.2}}>{s.label}</div>
-                    {s.clickable && <div style={{fontSize:9,color:s.color,marginTop:2}}>clic para ver →</div>}
+          <div className="card" style={{marginBottom:20,padding:0,overflow:'hidden'}}>
+            {/* Header */}
+            <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',padding:'14px 20px',
+              display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontFamily:'Playfair Display,serif',fontSize:16,fontWeight:700,color:'var(--gold2)'}}>
+                  📋 Agenda — Próximos 30 días
+                </div>
+                <div style={{fontSize:11,color:'rgba(250,248,243,0.5)',marginTop:2}}>
+                  {items.length} item{items.length!==1?'s':''} pendiente{items.length!==1?'s':''}
+                  · {items.filter(x=>x._tipo==='fiscal').length} fiscal{items.filter(x=>x._tipo==='fiscal').length!==1?'es':''}
+                  · {items.filter(x=>x._tipo!=='fiscal').length} tarea{items.filter(x=>x._tipo!=='fiscal').length!==1?'s':''}
+                </div>
+              </div>
+              {/* Leyenda */}
+              <div style={{display:'flex',gap:12,fontSize:10,color:'rgba(250,248,243,0.6)'}}>
+                <span style={{display:'flex',alignItems:'center',gap:4}}>
+                  <span style={{width:10,height:10,borderRadius:2,background:'var(--gold)',display:'inline-block'}}/>Fiscal
+                </span>
+                <span style={{display:'flex',alignItems:'center',gap:4}}>
+                  <span style={{width:10,height:10,borderRadius:2,background:'#60a5fa',display:'inline-block'}}/>Tarea
+                </span>
+                <span style={{display:'flex',alignItems:'center',gap:4}}>
+                  <span style={{width:10,height:10,borderRadius:2,background:'#a78bfa',display:'inline-block'}}/>Recurrente
+                </span>
+              </div>
+            </div>
+
+            {/* Rows */}
+            <div style={{maxHeight:320,overflowY:'auto'}}>
+              {fechas.map(fecha => {
+                const group = porFecha[fecha];
+                const days  = daysUntil(fecha);
+                const d     = new Date(fecha+'T12:00:00');
+                const isToday   = days === 0;
+                const isOverdue = days < 0;
+                const isUrgent  = days > 0 && days <= 3;
+                const isSoon    = days > 3 && days <= 7;
+
+                const rowBg = isOverdue ? 'rgba(239,68,68,0.06)'
+                            : isToday   ? 'rgba(201,169,110,0.12)'
+                            : isUrgent  ? 'rgba(239,68,68,0.04)'
+                            : 'transparent';
+                const borderL = isOverdue ? '3px solid var(--red)'
+                              : isToday   ? '3px solid var(--gold)'
+                              : isUrgent  ? '3px solid rgba(239,68,68,0.4)'
+                              : isSoon    ? '3px solid var(--amber)'
+                              : '3px solid transparent';
+
+                const labelDias = isOverdue ? `Vencido hace ${Math.abs(days)}d`
+                                : isToday   ? 'HOY'
+                                : `${days}d`;
+                const labelColor = isOverdue ? 'var(--red)'
+                                 : isToday   ? 'var(--gold)'
+                                 : isUrgent  ? 'var(--red)'
+                                 : isSoon    ? 'var(--amber)'
+                                 : 'var(--gray)';
+
+                return (
+                  <div key={fecha} style={{borderLeft:borderL,background:rowBg,
+                    padding:'10px 18px',borderBottom:'1px solid var(--cream2)',
+                    display:'flex',gap:14,alignItems:'flex-start'}}>
+
+                    {/* Fecha box */}
+                    <div style={{flexShrink:0,textAlign:'center',minWidth:44}}>
+                      <div style={{fontFamily:'Playfair Display,serif',fontSize:22,fontWeight:700,
+                        color: isOverdue?'var(--red)': isToday?'var(--gold)':'var(--black)',lineHeight:1}}>
+                        {d.getDate()}
+                      </div>
+                      <div style={{fontSize:10,fontWeight:600,color:'var(--gray)',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+                        {MONTHS_ES[d.getMonth()]}
+                      </div>
+                      <div style={{fontSize:10,fontWeight:700,color:labelColor,marginTop:3,
+                        fontFamily:'JetBrains Mono,monospace'}}>
+                        {labelDias}
+                      </div>
+                    </div>
+
+                    {/* Items del día */}
+                    <div style={{flex:1,display:'flex',flexDirection:'column',gap:5}}>
+                      {group.map((x,i) => {
+                        const isFiscal     = x._tipo === 'fiscal';
+                        const isRecurrente = x._tipo === 'recurrente';
+                        const accentColor  = isFiscal ? 'var(--gold)' : isRecurrente ? '#a78bfa' : '#60a5fa';
+                        const bgColor      = isFiscal ? 'rgba(201,169,110,0.08)' : isRecurrente ? 'rgba(167,139,250,0.08)' : 'rgba(96,165,250,0.08)';
+                        const icon         = isFiscal ? '🏛️' : isRecurrente ? '🔁' : '✅';
+
+                        return (
+                          <div key={x.id+i} style={{display:'flex',alignItems:'center',gap:8,
+                            padding:'5px 10px',borderRadius:6,background:bgColor,
+                            border:`1px solid ${accentColor}30`}}>
+                            <span style={{fontSize:12,flexShrink:0}}>{icon}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:600,color:'var(--black)',
+                                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                {x.nombre}
+                              </div>
+                              {x.clientes && (
+                                <div style={{fontSize:10,color:'var(--gray)',marginTop:1}}>
+                                  {x.clientes}
+                                </div>
+                              )}
+                            </div>
+                            <span style={{flexShrink:0,fontSize:9,fontWeight:700,
+                              padding:'2px 6px',borderRadius:4,
+                              background: accentColor, color: isFiscal?'var(--black)':'white'}}>
+                              {isFiscal ? 'FISCAL' : isRecurrente ? 'RECURRENTE' : 'TAREA'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
+
+        {/* ── CALENDAR ── */}
+        <div style={{flex:1,minWidth:0}}>
+          <div className="card" style={{padding:20}}>
+            {/* Month nav */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+              <button className="btn btn-ghost btn-sm" onClick={prevMonth}>‹ Ant</button>
+              <div style={{fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:'var(--black)'}}>
+                {MONTHS_FULL[calMonth]} {calYear}
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={nextMonth}>Sig ›</button>
+            </div>
+
+            {/* DOW headers */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:8}}>
+              {DOW_LABELS.map(d=>(
+                <div key={d} style={{textAlign:'center',fontSize:11,fontWeight:700,color:'var(--gray2)',
+                  textTransform:'uppercase',letterSpacing:'0.5px',fontFamily:'JetBrains Mono,monospace',padding:'4px 0'}}>
+                  {d}
                 </div>
               ))}
             </div>
-            <div style={{fontSize:11,color:'var(--gray)',marginBottom:12,fontFamily:'JetBrains Mono,monospace'}}>
-              Mostrando {MONTHS_FULL[nowD.getMonth()]} {nowD.getFullYear()} · solo obligaciones con clientes asignados
+
+            {/* Day cells */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4}}>
+              {/* empty cells before month start */}
+              {Array.from({length:startOffset}).map((_,i)=>(
+                <div key={'e'+i} style={{aspectRatio:'1',borderRadius:10}} />
+              ))}
+              {Array.from({length:days}).map((_,i)=>{
+                const d = i+1;
+                const dateStr = ymd(calYear,calMonth,d);
+                const isToday = dateStr === todayStr;
+                const isSel   = dateStr === selDate;
+                const dot     = dotColor(dateStr);
+                const count   = (byDate[dateStr]||[]).filter(v=>!v.completado).length;
+                return (
+                  <div key={d} onClick={()=>setSelDate(dateStr)}
+                    style={{
+                      aspectRatio:'1',borderRadius:10,display:'flex',flexDirection:'column',
+                      alignItems:'center',justifyContent:'center',cursor:'pointer',
+                      transition:'all 0.15s',position:'relative',
+                      background: isSel ? 'var(--black)' : isToday ? 'rgba(201,169,110,0.15)' : 'var(--cream)',
+                      border: isToday && !isSel ? '2px solid var(--gold)' : '2px solid transparent',
+                    }}>
+                    <div style={{fontSize:14,fontWeight:isSel||isToday?700:400,
+                      color:isSel?'var(--gold2)':isToday?'var(--gold)':'var(--black)'}}>
+                      {d}
+                    </div>
+                    {dot && (
+                      <div style={{display:'flex',gap:2,marginTop:2}}>
+                        {count>0 && Array.from({length:Math.min(count,3)}).map((_,i)=>(
+                          <div key={i} style={{width:5,height:5,borderRadius:'50%',background:dot}} />
+                        ))}
+                        {count>3 && <div style={{width:5,height:5,borderRadius:'50%',background:dot,opacity:0.5}} />}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </>
-        );
-      })()}
 
-      {/* ── FILTROS Y BÚSQUEDA ── */}
-      <div style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-        <div className="search-wrap" style={{flex:1,minWidth:220}}>
-          <span className="search-icon">🔍</span>
-          <input className="search-input" placeholder="Buscar por cliente u obligación..." value={listSearch} onChange={e=>setListSearch(e.target.value)} />
-        </div>
-
-        {/* Scope: Con clientes / Todas */}
-        <div style={{display:'flex',background:'var(--cream2)',padding:3,borderRadius:9,gap:2}}>
-          {[
-            ['con_clientes','👥 Con clientes'],
-            ['todas','📋 Todas'],
-          ].map(([s,l])=>(
-            <button key={s}
-              onClick={()=>setListScope(s)}
-              style={{
-                padding:'6px 14px',borderRadius:7,border:'none',cursor:'pointer',
-                fontFamily:'Montserrat,sans-serif',fontSize:12,fontWeight:600,
-                transition:'all 0.18s',
-                background: listScope===s ? 'var(--white)' : 'transparent',
-                color: listScope===s ? 'var(--black)' : 'var(--gray)',
-                boxShadow: listScope===s ? '0 2px 8px rgba(17,17,16,0.08)' : 'none',
-              }}>
-              {l}
-            </button>
-          ))}
-        </div>
-
-        {/* Estado: Pendientes / Vencidos / Completados / Todos */}
-        <div style={{display:'flex',gap:4}}>
-          {[['pendientes','Pendientes'],['vencidos','Vencidos'],['completados','✓ Completados'],['todos','Todos']].map(([f,l])=>(
-            <button key={f} className={`btn btn-sm ${listFilter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setListFilter(f)}>{l}</button>
-          ))}
-        </div>
-
-        <div style={{display:'flex',gap:4,alignItems:'center'}}>
-          <span style={{fontSize:11,color:'var(--gray)'}}>Ordenar:</span>
-          {[['fecha','Fecha'],['dias','Días'],['cliente','Cliente']].map(([s,l])=>(
-            <button key={s} className={`btn btn-sm ${listSort===s?'btn-gold':'btn-ghost'}`} onClick={()=>setListSort(s)}>{l}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Aviso cuando scope = todas y hay sin match */}
-      {listScope === 'todas' && (() => {
-        const sinMatch = vencimientos.filter(v => {
-          const grupos = groupVenc([v]);
-          return grupos.some(g => getClientesDelGrupo(g).matched.length === 0);
-        }).length;
-        return sinMatch > 0 ? (
-          <div style={{marginBottom:12,padding:'10px 16px',background:'rgba(201,169,110,0.08)',
-            border:'1px solid rgba(201,169,110,0.25)',borderRadius:9,fontSize:12,color:'var(--gray)',
-            display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:16}}>ℹ️</span>
-            Mostrando también obligaciones sin clientes asignados. Usá <strong>👥 Con clientes</strong> para ver solo las que aplican a tus clientes.
+            {/* Legend */}
+            <div style={{display:'flex',gap:16,marginTop:16,paddingTop:14,borderTop:'1px solid var(--cream2)',flexWrap:'wrap'}}>
+              {[['var(--red)','Urgente / Vencido'],['var(--gold)','Pendiente'],['var(--green)','Completado']].map(([c,l])=>(
+                <div key={l} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray)'}}>
+                  <div style={{width:8,height:8,borderRadius:'50%',background:c}} />{l}
+                </div>
+              ))}
+            </div>
           </div>
-        ) : null;
-      })()}
+        </div>
 
-      {/* ── LISTADO PRINCIPAL ── */}
-      {(() => {
-        const rows = buildListRows();
-        if (rows.length === 0) return (
-          <div className="empty-state card">
-            <div className="empty-icon">✅</div>
-            <p>{listFilter==='vencidos'?'No hay vencimientos vencidos.':listFilter==='completados'?'Aún no hay vencimientos completados.':listScope==='con_clientes'?'Ningún cliente tiene obligaciones pendientes en este período.':'Sin obligaciones pendientes en este período.'}</p>
-          </div>
-        );
-
-        return (
+        {/* ── PANEL LATERAL ── */}
+        <div style={{width:360,flexShrink:0,position:'sticky',top:20}}>
           <div className="card" style={{padding:0,overflow:'hidden'}}>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{width:32,paddingLeft:16}}></th>
-                    <th>Cliente</th>
-                    <th>Obligación</th>
-                    <th>Tipo</th>
-                    <th>Fecha vencimiento</th>
-                    <th style={{textAlign:'center'}}>Días restantes</th>
-                    <th style={{textAlign:'center'}}>Estado</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, idx) => {
-                    const { grupo, cliente, clienteFallback, dias, allDone, ids } = row;
-                    const urg = urgencyStyle(dias, allDone);
-                    const dLabel = diasLabel(dias, allDone);
+            {/* Panel header */}
+            <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',padding:'18px 20px',
+              display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,color:'var(--gold2)'}}>
+                  {selDate === todayStr ? '📅 Hoy' : fmtDate(selDate)}
+                </div>
+                <div style={{fontSize:11,color:'rgba(250,248,243,0.5)',marginTop:2}}>
+                  {dayVenc.length === 0 ? 'Sin vencimientos' :
+                   `${dayVenc.filter(v=>!v.completado).length} pendiente${dayVenc.filter(v=>!v.completado).length!==1?'s':''}`}
+                </div>
+                {dayVenc.length > 0 && (
+                  <button
+                    onClick={()=>setDebugDay(selDate)}
+                    style={{marginTop:6,padding:'2px 8px',fontSize:9,background:'rgba(255,255,255,0.15)',
+                      border:'1px solid rgba(255,255,255,0.3)',borderRadius:4,color:'white',cursor:'pointer',
+                      fontFamily:'monospace'}}>
+                    🔍 debug
+                  </button>
+                )}
+              </div>
+              <button className="btn btn-gold btn-sm" onClick={openNew} style={{fontSize:12}}>+ Agregar</button>
+            </div>
+
+            <div style={{padding:16,maxHeight:520,overflowY:'auto'}}>
+              {dayVenc.length === 0 ? (
+                <div className="empty-state" style={{padding:'36px 16px'}}>
+                  <div className="empty-icon" style={{fontSize:32}}>🎉</div>
+                  <p>Sin vencimientos para este día</p>
+                </div>
+              ) : (
+                (() => {
+                  const grupos = groupVenc(dayVenc);
+                  return grupos.map(grupo => {
+                    const ids   = grupo.items.map(x=>x.id);
+                    const allDone  = grupo.items.every(x=>x.completado);
                     const someDone = grupo.items.some(x=>x.completado) && !allDone;
+                    const days     = daysUntil(grupo.fecha);
+                    const { matched: cMatch } = getClientesDelGrupo(grupo);
 
                     return (
-                      <tr key={grupo.base+'||'+grupo.fecha+'||'+(cliente?.id||idx)}
-                        style={{
-                          background: urg.bg,
-                          borderLeft: `4px solid ${urg.border}`,
-                          opacity: allDone ? 0.65 : 1,
-                          transition: 'background 0.2s',
-                        }}>
+                      <div key={grupo.base+'||'+grupo.fecha} style={{
+                        padding:'12px 14px',borderRadius:10,marginBottom:8,
+                        background: allDone ? 'var(--cream)' : days<0 ? 'rgba(192,57,43,0.06)' : days<=3 ? 'rgba(192,57,43,0.04)' : 'rgba(201,169,110,0.04)',
+                        border: allDone ? '1px solid var(--cream2)' : days<0 ? '1px solid rgba(192,57,43,0.25)' : days<=3 ? '1px solid rgba(192,57,43,0.18)' : '1px solid rgba(201,169,110,0.2)',
+                        opacity: allDone ? 0.65 : 1,
+                      }}>
+                        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
 
-                        {/* Checkbox */}
-                        <td style={{paddingLeft:14,paddingRight:4}}>
+                          {/* Checkbox grupo */}
                           <div onClick={()=>toggleGroup(ids,!allDone)} style={{
-                            width:16,height:16,borderRadius:4,flexShrink:0,cursor:'pointer',
-                            border: allDone ? `2px solid ${urg.text}` : '2px solid #d1d5db',
-                            background: allDone ? urg.text : someDone ? 'rgba(201,169,110,0.3)' : 'transparent',
-                            display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'
+                            marginTop:2,flexShrink:0,width:16,height:16,borderRadius:4,
+                            border: allDone ? '2px solid var(--gold)' : someDone ? '2px solid var(--gold)' : '2px solid var(--gray3)',
+                            background: allDone ? 'var(--gold)' : someDone ? 'rgba(201,169,110,0.3)' : 'transparent',
+                            cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'
                           }}>
                             {allDone && <span style={{fontSize:10,color:'white',lineHeight:1}}>✓</span>}
-                            {someDone && <span style={{fontSize:9,color:'var(--gold)',lineHeight:1}}>–</span>}
+                            {someDone && <span style={{fontSize:10,color:'var(--gold)',lineHeight:1}}>–</span>}
                           </div>
-                        </td>
 
-                        {/* Cliente */}
-                        <td>
-                          {cliente ? (
-                            <div style={{display:'flex',alignItems:'center',gap:9}}>
-                              <div style={{width:30,height:30,borderRadius:8,flexShrink:0,
-                                background:'linear-gradient(135deg,var(--gold),var(--gold2))',
-                                display:'flex',alignItems:'center',justifyContent:'center',
-                                fontFamily:'Playfair Display,serif',fontSize:12,fontWeight:700,color:'var(--black)'}}>
-                                {initials(cliente.nombre)}
-                              </div>
-                              <div>
-                                <div style={{fontWeight:600,fontSize:13,color:'var(--black)',
-                                  textDecoration:allDone?'line-through':'none'}}>{cliente.nombre}</div>
-                                {cliente.cuit && <div style={{fontSize:10,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{cliente.cuit}</div>}
-                              </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
+                              textDecoration:allDone?'line-through':'none',lineHeight:1.3}}>
+                              {grupo.base}
                             </div>
-                          ) : (
-                            <span style={{fontSize:12,color:'var(--gray)',fontStyle:'italic'}}>
-                              {clienteFallback || 'General'}
-                            </span>
-                          )}
-                        </td>
+                            <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap',alignItems:'center'}}>
+                              <span className={`badge ${grupo.tipo==='fiscal'?'badge-blue':grupo.tipo==='laboral'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
+                                {grupo.tipo||'fiscal'}
+                              </span>
+                              <span className={`badge ${grupo.prioridad==='alta'?'badge-red':grupo.prioridad==='baja'?'badge-green':'badge-gold'}`} style={{fontSize:9}}>
+                                {grupo.prioridad||'media'}
+                              </span>
+                              {grupo.items.length > 1 && (
+                                <span className="badge badge-gray"
+                                  style={{fontSize:9,cursor:'pointer',textDecoration:'underline dotted'}}
+                                  onClick={e=>{e.stopPropagation();setVencDetail(grupo);}}>
+                                  {grupo.items.length} venc.
+                                </span>
+                              )}
+                            </div>
 
-                        {/* Obligación */}
-                        <td>
-                          <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
-                            textDecoration:allDone?'line-through':'none',maxWidth:260,lineHeight:1.3}}>
-                            {grupo.base}
-                            {grupo.items.length > 1 && (
-                              <span style={{marginLeft:5,fontSize:10,color:'var(--gray)',fontWeight:400,
-                                cursor:'pointer',textDecoration:'underline dotted'}}
-                                onClick={e=>{e.stopPropagation();setVencDetail(grupo);}}>
-                                ({grupo.items.length} venc.)
+                            {cMatch.length > 0 && (
+                              <div style={{marginTop:8,paddingTop:7,borderTop:'1px dashed var(--cream2)'}}>
+                                <div style={{fontSize:9,fontWeight:700,color:'var(--gray)',
+                                  textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:5}}>
+                                  {cMatch.length} cliente{cMatch.length!==1?'s':''} afectado{cMatch.length!==1?'s':''}
+                                </div>
+                                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                                  {cMatch.slice(0,8).map(c=>(
+                                    <span key={c.id} style={{
+                                      fontSize:10,padding:'2px 8px',borderRadius:20,
+                                      background:'rgba(201,169,110,0.12)',
+                                      color:'var(--black)',border:'1px solid rgba(201,169,110,0.35)',
+                                      fontWeight:500,whiteSpace:'nowrap',
+                                      maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'
+                                    }}>{c.nombre}</span>
+                                  ))}
+                                  {cMatch.length > 8 && (
+                                    <span style={{fontSize:10,color:'var(--gray)',padding:'2px 4px'}}>
+                                      +{cMatch.length-8} más
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{display:'flex',gap:4,flexShrink:0}}>
+                            <button className="btn btn-ghost btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
+                              onClick={()=>openEdit(grupo.items[0])}>✏️</button>
+                            <button className="btn btn-danger btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
+                              onClick={async()=>{
+                                const ok = await Swal.fire({
+                                  icon:'warning',title:'¿Eliminar vencimiento?',
+                                  text: grupo.items.length>1 ? 'Se eliminarán '+grupo.items.length+' registros agrupados.' : 'Se eliminará este vencimiento.',
+                                  showCancelButton:true,confirmButtonText:'Sí, eliminar',
+                                  cancelButtonText:'Cancelar',customClass:{popup:'swal-ap'}
+                                });
+                                if (!ok.isConfirmed) return;
+                                const fb = FB();
+                                await Promise.all(ids.map(id=>fb.deleteDoc(fb.doc(fb.db,'vencimientos',id)).catch(()=>{})));
+                                setVencimientos(prev=>prev.filter(x=>!ids.includes(x.id)));
+                              }}>🗑️</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
+              )}            </div>
+          </div>
+
+                    {/* Próximos 7 días — agrupados */}
+          <div className="card" style={{marginTop:16,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
+              letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:12}}>
+              Próximos 7 días
+            </div>
+            {(() => {
+              const proximos = vencimientos
+                .filter(v=>!v.completado && daysUntil(v.fecha)>=0 && daysUntil(v.fecha)<=7)
+                .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+              if (proximos.length===0) return (
+                <div style={{fontSize:12,color:'var(--green)',fontWeight:600}}>✓ Sin urgencias esta semana</div>
+              );
+              // Agrupar por nombre base + fecha
+              const grupos = groupVenc(proximos);
+              return grupos.map(grupo=>{
+                const d = new Date(grupo.fecha+'T12:00:00');
+                const { matched: pMatch, fallbackText: pFallback } = getClientesDelGrupo(grupo);
+                const ids = grupo.items.map(x=>x.id);
+                const allDone = grupo.items.every(x=>x.completado);
+                return (
+                  <div key={grupo.base+grupo.fecha} onClick={()=>setSelDate(grupo.fecha)}
+                    style={{padding:'9px 0',borderBottom:'1px solid var(--cream2)',cursor:'pointer',
+                      opacity: allDone ? 0.5 : 1}}>
+                    <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                      <div style={{width:32,height:32,borderRadius:8,background:'var(--red2)',
+                        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                        flexShrink:0,marginTop:1}}>
+                        <div style={{fontSize:14,fontWeight:700,color:'var(--red)',lineHeight:1}}>{d.getDate()}</div>
+                        <div style={{fontSize:8,color:'var(--red)',textTransform:'uppercase',
+                          fontFamily:'JetBrains Mono,monospace'}}>{MONTHS_ES[d.getMonth()]}</div>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:600,overflow:'hidden',
+                          textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.3,
+                          textDecoration:allDone?'line-through':'none'}}>
+                          {grupo.base}
+                          {grupo.items.length > 1 &&
+                            <span style={{marginLeft:5,fontSize:10,color:'var(--gray)',fontWeight:400}}>
+                              ({grupo.items.length})
+                            </span>
+                          }
+                        </div>
+                        {pMatch.length > 0 ? (
+                          <div style={{marginTop:4,display:'flex',flexWrap:'wrap',gap:3}}>
+                            {pMatch.slice(0,4).map(c=>(
+                              <span key={c.id} style={{
+                                fontSize:9,padding:'1px 6px',borderRadius:20,
+                                background:'rgba(201,169,110,0.12)',
+                                color:'var(--black)',border:'1px solid rgba(201,169,110,0.3)',
+                                fontWeight:500,whiteSpace:'nowrap',
+                                maxWidth:110,overflow:'hidden',textOverflow:'ellipsis'
+                              }}>{c.nombre}</span>
+                            ))}
+                            {pMatch.length > 4 && (
+                              <span style={{fontSize:9,color:'var(--gray)',padding:'1px 3px'}}>
+                                +{pMatch.length-4}
                               </span>
                             )}
                           </div>
-                        </td>
-
-                        {/* Tipo */}
-                        <td>
-                          <span className={`badge ${grupo.tipo==='fiscal'?'badge-blue':grupo.tipo==='laboral'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
-                            {grupo.tipo||'fiscal'}
-                          </span>
-                        </td>
-
-                        {/* Fecha */}
-                        <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:urg.text,fontWeight:600,whiteSpace:'nowrap'}}>
-                          {fmtDate(grupo.fecha)}
-                        </td>
-
-                        {/* Días restantes */}
-                        <td style={{textAlign:'center'}}>
-                          <div style={{
-                            display:'inline-flex',alignItems:'center',justifyContent:'center',
-                            padding:'4px 10px',borderRadius:20,
-                            background: urg.badge,
-                            color: urg.badgeText,
-                            fontSize:11,fontWeight:700,fontFamily:'JetBrains Mono,monospace',
-                            whiteSpace:'nowrap',border:`1px solid ${urg.border}`
-                          }}>
-                            {dLabel}
-                          </div>
-                        </td>
-
-                        {/* Estado */}
-                        <td style={{textAlign:'center'}}>
-                          <span className={`badge ${allDone?'badge-green':dias<0?'badge-red':dias<=7?'badge-amber':'badge-gray'}`} style={{fontSize:9}}>
-                            {allDone?'✓ Hecho':dias<0?'Vencido':dias===0?'Hoy':'Pendiente'}
-                          </span>
-                        </td>
-
-                        {/* Acciones */}
-                        <td onClick={e=>e.stopPropagation()}>
-                          <div className="action-btns">
-                            <button className="btn-icon edit" title="Editar" onClick={()=>openEdit(grupo.items[0])}>✏️</button>
-                            <button className="btn-icon trash" title="Eliminar" onClick={async()=>{
-                              const ok = await Swal.fire({
-                                icon:'warning',title:'¿Eliminar vencimiento?',
-                                text: grupo.items.length>1 ? 'Se eliminarán '+grupo.items.length+' registros agrupados.' : 'Se eliminará este vencimiento.',
-                                showCancelButton:true,confirmButtonText:'Sí, eliminar',
-                                cancelButtonText:'Cancelar',customClass:{popup:'swal-ap'}
-                              });
-                              if (!ok.isConfirmed) return;
-                              const fb = FB();
-                              await Promise.all(ids.map(id=>fb.deleteDoc(fb.doc(fb.db,'vencimientos',id)).catch(()=>{})));
-                              setVencimientos(prev=>prev.filter(x=>!ids.includes(x.id)));
-                            }}>🗑️</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Leyenda de colores */}
-            <div style={{padding:'12px 20px',borderTop:'1px solid var(--cream2)',display:'flex',gap:16,flexWrap:'wrap',background:'var(--cream)'}}>
-              {[
-                ['#fecdd3','Vencido'],
-                ['#fed7aa','Vence hoy'],
-                ['#fde68a','Próximos 3 días'],
-                ['#fef9c3','Esta semana'],
-                ['rgba(201,169,110,0.15)','Próximas 2 sem.'],
-                ['var(--white)','Sin urgencia'],
-              ].map(([c,l])=>(
-                <div key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--gray)'}}>
-                  <div style={{width:12,height:12,borderRadius:3,background:c,border:'1px solid rgba(0,0,0,0.1)'}} />
-                  {l}
-                </div>
-              ))}
-            </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
-        );
-      })()}
+
+        </div>
+      </div>
 
       {/* FORM MODAL */}
       {modal === 'form' && (
@@ -3506,48 +3452,6 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
         </Modal>
       )}
 
-      {/* ── MODAL OTROS MESES VENCIDOS ── */}
-      {vencOtrosMesesModal && (
-        <Modal title="📂 Obligaciones vencidas en meses anteriores" onClose={()=>setVencOtrosMesesModal(null)}
-          footer={<button className="btn btn-ghost btn-sm" onClick={()=>setVencOtrosMesesModal(null)}>Cerrar</button>}>
-          <div style={{marginBottom:12,padding:'10px 14px',background:'#fff1f2',borderRadius:8,fontSize:12,color:'#be123c',border:'1px solid #fecdd3'}}>
-            <strong>{vencOtrosMesesModal.length} obligación{vencOtrosMesesModal.length!==1?'es':''}</strong> vencida{vencOtrosMesesModal.length!==1?'s':''} en meses anteriores con clientes asignados sin completar.
-          </div>
-          <div style={{border:'1px solid var(--cream2)',borderRadius:10,overflow:'hidden'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-              <thead>
-                <tr style={{background:'linear-gradient(135deg,var(--black),var(--black2))'}}>
-                  {['Obligación','Fecha','Días vencido','Clientes'].map(h=>(
-                    <th key={h} style={{padding:'9px 12px',textAlign:'left',color:'var(--cream)',fontWeight:600,fontSize:11,fontFamily:'JetBrains Mono,monospace'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {groupVenc(vencOtrosMesesModal).map((grupo,i) => {
-                  const dias = Math.abs(daysUntil(grupo.fecha));
-                  const {matched} = getClientesDelGrupo(grupo);
-                  return (
-                    <tr key={grupo.base+grupo.fecha} style={{borderTop:'1px solid var(--cream2)',background:i%2===0?'white':'var(--cream)'}}>
-                      <td style={{padding:'8px 12px',fontWeight:600,color:'var(--black)'}}>{grupo.base}</td>
-                      <td style={{padding:'8px 12px',fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'#be123c',whiteSpace:'nowrap'}}>{fmtDate(grupo.fecha)}</td>
-                      <td style={{padding:'8px 12px',fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'#be123c'}}>{dias}d</td>
-                      <td style={{padding:'8px 12px'}}>
-                        <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                          {matched.slice(0,4).map(c=>(
-                            <span key={c.id} style={{fontSize:10,padding:'1px 6px',borderRadius:20,background:'rgba(201,169,110,0.12)',border:'1px solid rgba(201,169,110,0.3)',color:'var(--black)',fontWeight:500}}>{c.nombre}</span>
-                          ))}
-                          {matched.length>4 && <span style={{fontSize:10,color:'var(--gray)'}}>+{matched.length-4}</span>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Modal>
-      )}
-
       {/* ── IMPORTAR VENCIMIENTOS MODAL ── */}
       {showImport && (
         <ImportarVencimientos
@@ -3709,6 +3613,169 @@ function Finanzas({ cobros, setCobros, facturas, setFacturas }) {
               <label className="form-label">Fecha</label>
               <input className="form-input" type="date" value={editForm.fecha||''} onChange={e=>setEditForm(f=>({...f,fecha:e.target.value}))} />
             </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── FACTURACIÓN ──────────────────────────────────────
+function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
+  const [modal, setModal]   = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [form, setForm]     = useState({});
+  const [filterMes, setFilterMes] = useState('');
+  const now = new Date();
+  const mesActual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const listaFiltrada = filterMes ? facturas.filter(f=>(f.fecha||'').startsWith(filterMes)) : facturas;
+
+  // Totals computed inline in JSX
+
+  const handleSave = async () => {
+    if (!form.cliente || !form.monto) return;
+    const payload = {...form, monto: Number(form.monto), clienteId: clients.find(c=>c.nombre===form.cliente)?.id||''};
+    if (editItem) {
+      try { await FB().updateDoc(FB().doc(FB().db,'facturas',editItem.id), payload); } catch(e){}
+      setFacturas(prev=>prev.map(x=>x.id===editItem.id?{...payload,id:editItem.id}:x));
+    } else {
+      try {
+        const ref = await FB().addDoc(FB().collection(FB().db,'facturas'), {...payload, createdAt:FB().serverTimestamp()});
+        setFacturas(prev => [...prev, {...payload, id: ref.id}]);
+      } catch(e) {
+        setFacturas(prev => [...prev, {...payload, id: 'local-'+Date.now()}]);
+      }
+    }
+    setModal(null); setEditItem(null);
+  };
+
+  const ESTADO_CYCLE = { 'na':'pendiente', 'pendiente':'facturado', 'facturado':'na' };
+  const ESTADO_LABEL = { 'na':'— N/A', 'pendiente':'⏳ Pendiente', 'facturado':'🧾 Facturado' };
+  const ESTADO_BADGE = { 'na':'badge-gray', 'pendiente':'badge-amber', 'facturado':'badge-green' };
+
+  const toggleEstado = async (id) => {
+    const f = facturas.find(x=>x.id===id);
+    const cur = f?.estado||'na';
+    const newEstado = ESTADO_CYCLE[cur]||'pendiente';
+    try { await FB().updateDoc(FB().doc(FB().db,'facturas',id),{estado:newEstado}); } catch(e){}
+    setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: newEstado} : f));
+  };
+
+  const openEditFac = (f) => {
+    setEditItem(f);
+    setForm({ cliente:f.cliente||'', concepto:f.concepto||'', monto:f.monto||'', fecha:f.fecha||todayStr, estado:f.estado||'pendiente' });
+    setModal('new');
+  };
+
+  const handleDeleteFac = async (id) => {
+    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar esta factura/cargo', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+    if (!result.isConfirmed) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'facturas',id)); } catch(e){}
+    setFacturas(prev=>prev.filter(x=>x.id!==id));
+  };
+
+  const meses = [...new Set(facturas.map(f=>(f.fecha||'').slice(0,7)))].filter(Boolean).sort().reverse();
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Facturación</div>
+          <div className="page-subtitle">Honorarios generados · {filterMes||'Todos los meses'}</div>
+        </div>
+        <button className="btn btn-gold" onClick={() => { setEditItem(null); setForm({ estado: 'na', fecha: todayStr }); setModal('new'); }}>+ Nuevo Cargo</button>
+      </div>
+
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:24}}>
+        <div className="stat-card">
+          <div className="stat-icon">🧾</div>
+          <div className="stat-label">Facturados</div>
+          <div className="stat-value gold">{fmtShort(listaFiltrada.filter(f=>f.estado==='facturado').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">⏳</div>
+          <div className="stat-label">Pendiente de factura</div>
+          <div className="stat-value" style={{color:'var(--amber)'}}>{fmtShort(listaFiltrada.filter(f=>f.estado==='pendiente').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">📋</div>
+          <div className="stat-label">Total cargos</div>
+          <div className="stat-value">{listaFiltrada.length}</div>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
+        <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Mes:</span>
+        <button className={`btn btn-sm ${!filterMes?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes('')}>Todos</button>
+        {meses.slice(0,6).map(m=>(
+          <button key={m} className={`btn btn-sm ${filterMes===m?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes(m)}>{m}</button>
+        ))}
+      </div>
+
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              <th style={{paddingLeft:16}}>Concepto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Estado <span style={{fontSize:10,opacity:0.6}}>(clic para cambiar)</span></th><th>Acciones</th>
+            </tr></thead>
+            <tbody>
+              {[...listaFiltrada].sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
+                <tr key={f.id}>
+                  <td style={{paddingLeft:16,fontWeight:500}}>{f.concepto}</td>
+                  <td style={{fontSize:13}}>{f.cliente}</td>
+                  <td style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700}}>{fmt(f.monto)}</td>
+                  <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13}}>{fmtDate(f.fecha)}</td>
+                  <td>
+                    <span className={`badge ${ESTADO_BADGE[f.estado||'na']}`} style={{cursor:'pointer'}} title="Clic para cambiar estado" onClick={()=>toggleEstado(f.id)}>
+                      {ESTADO_LABEL[f.estado||'na']}
+                    </span>
+                  </td>
+                  <td><div className="action-btns">
+                    <button className="btn-icon edit" title="Editar" onClick={()=>openEditFac(f)}>✏️</button>
+                    <button className="btn-icon trash" title="Eliminar" onClick={()=>handleDeleteFac(f.id)}>🗑️</button>
+                  </div></td>
+                </tr>
+              ))}
+              {listaFiltrada.length===0 && <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--gray2)'}}>Sin comprobantes</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modal === 'new' && (
+        <Modal title={editItem ? "✏️ Editar Cargo" : "Nueva Factura / Cargo"} onClose={() => setModal(null)}
+          footer={<>
+            <button className="btn btn-ghost btn-sm" onClick={() => {setModal(null);setEditItem(null);}}>Cancelar</button>
+            <button className="btn btn-gold btn-sm" onClick={handleSave}>{editItem?'Guardar Cambios':'Guardar'}</button>
+          </>}>
+          <div className="form-group">
+            <label className="form-label">Cliente</label>
+            <select className="form-select" value={form.cliente||''} onChange={e => setForm(f => ({...f, cliente: e.target.value}))}>
+              <option value="">Seleccionar cliente...</option>
+              {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Concepto</label>
+            <input className="form-input" value={form.concepto||''} onChange={e => setForm(f => ({...f, concepto: e.target.value}))} placeholder="Asesoría Fiscal - Abril 2026" />
+          </div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Monto (ARS)</label>
+              <input className="form-input" type="number" value={form.monto||''} onChange={e => setForm(f => ({...f, monto: e.target.value}))} placeholder="195000" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fecha</label>
+              <input className="form-input" type="date" value={form.fecha||''} onChange={e => setForm(f => ({...f, fecha: e.target.value}))} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Estado</label>
+            <select className="form-select" value={form.estado||'na'} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
+              <option value="na">— N/A</option>
+              <option value="pendiente">⏳ Pendiente de factura</option>
+              <option value="facturado">🧾 Facturado</option>
+            </select>
           </div>
         </Modal>
       )}
@@ -4548,6 +4615,36 @@ function App() {
         setFacturas(data);
       }
     }).catch(()=>{});
+    // auto-generate monthly charges on first of month
+    const todayD=new Date();
+    const monthKey=`charges-${todayD.getFullYear()}-${todayD.getMonth()}`;
+    if (todayD.getDate()>=1 && !localStorage.getItem(monthKey)) {
+      // will run after clients load — use a small delay
+      setTimeout(()=>{
+        setClients(current => {
+          const active=current.filter(c=>c.estado==='activo'&&c.honorario>0);
+          const mesLabel=`${MONTHS_FULL[todayD.getMonth()]} ${todayD.getFullYear()}`;
+          const newFacts=active.map(c=>({
+            id:'auto-'+c.id+'-'+monthKey,
+            clienteId:c.id, cliente:c.nombre,
+            concepto:`${c.servicio||'Honorarios'} - ${mesLabel}`,
+            monto:c.honorario, fecha:todayStr, estado:'pendiente'
+          }));
+          setFacturas(prev=>{
+            const autoIds=newFacts.map(f=>f.id);
+            const filtered=prev.filter(f=>!autoIds.includes(f.id));
+            return [...filtered,...newFacts];
+          });
+          // Save to firebase
+          const fb2=FB();
+          newFacts.forEach(f=>{
+            fb2?.addDoc(fb2.collection(fb2.db,'facturas'),{...f,autoGenerado:true,createdAt:fb2.serverTimestamp()}).catch(()=>{});
+          });
+          localStorage.setItem(monthKey,'done');
+          return current;
+        });
+      },1500);
+    }
   }, [user]);
 
   const handleLogout = async () => { try { await FB().signOut(FB().auth); } catch(e){} setUser(null); };
@@ -4566,6 +4663,7 @@ function App() {
     { id:'dashboard',    label:'Dashboard',    icon:'🏠' },
     { id:'clientes',     label:'Clientes',     icon:'👥' },
     { id:'vencimientos', label:'Vencimientos', icon:'📅', badge:vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)<=7).length||null },
+    { id:'facturacion',  label:'Facturación',  icon:'💰' },
     { id:'cobros',       label:'Cobros',       icon:'🧾' },
     { id:'finanzas',     label:'Finanzas',     icon:'📊' },
     { id:'tareas',       label:'Tareas',       icon:'✅', badge:tareas.filter(t=>!t.completado).length||null, badgeClass:'amber' },
@@ -4573,8 +4671,7 @@ function App() {
     { id:'catalogo',     label:'Tributos',     icon:'⚙️' },
   ];
 
-  // S(id): helper — sección siempre montada, solo cambia visibilidad
-  const S = (id) => ({ style: { display: section === id ? 'block' : 'none' } });
+  const S = (id) => ({ style: { display: section===id ? 'block' : 'none' } });
 
   return (
     <div className="app-layout">
@@ -4626,6 +4723,7 @@ function App() {
         <div {...S('dashboard')}><Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} /></div>
         <div {...S('clientes')}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} /></div>
         <div {...S('vencimientos')}><Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} tareas={tareas} setTareas={setTareas} /></div>
+        <div {...S('facturacion')}><Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
         <div {...S('tareas')}><Tareas tareas={tareas} setTareas={setTareas} clients={clients} /></div>
         <div {...S('notas')}><Notas notas={notas} setNotas={setNotas} clients={clients} /></div>
         <div {...S('cobros')}><Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
