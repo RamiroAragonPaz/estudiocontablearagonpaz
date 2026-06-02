@@ -1015,21 +1015,106 @@ function Modal({ title, onClose, children, footer }) {
 // ── DASHBOARD ────────────────────────────────────────
 function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas }) {
   const activeClients = clients.filter(c => c.estado === 'activo');
-  const totalMensual = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
-  const tareasComoVenc = (tareas||[])
-    .filter(t => t.recurrenteId && t.fecha && !t.recurrente && !t.completado)
-    .map(t => ({ id:t.id, nombre:'🔁 '+t.texto, fecha:t.fecha, clientes:t.cliente||'', completado:false, esTareaRecurrente:true }));
-  const pendientesHoy = [...vencimientos.filter(v=>!v.completado), ...tareasComoVenc]
-    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
-    .slice(0, 6);
-  const tareasP = tareas.filter(t => !t.completado).slice(0, 5);
+  const totalMensual  = activeClients.reduce((s, c) => s + (c.honorario || 0), 0);
   const saldosPendientes = clients.reduce((s, c) => s + (c.saldoPendiente || 0), 0);
-  const vencUrgentes = vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 7).length;
+  const tareasP = tareas.filter(t => !t.completado).slice(0, 5);
 
   const now = new Date();
   const dateDisplay = `${now.getDate()} de ${MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`;
   const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const dayName = days[now.getDay()];
+
+  // ── Misma lógica de matching que Vencimientos ────────
+  const TRIBUTO_KEYWORDS = [
+    { id:'recat_mono',  words:['recategori'] },
+    { id:'monotributo', words:['monotributo'] },
+    { id:'autonomos',   words:['autónomos','autonomos'] },
+    { id:'ganancias',   words:['ganancias'] },
+    { id:'iibb_cm',     words:['convenio multilateral','multilateral','cm0'] },
+    { id:'iibb_anual',  words:['iibb','ingresos brutos'], extra: n => n.includes('anual') },
+    { id:'iibb',        words:['iibb','ingresos brutos'] },
+    { id:'iva',         words:['iva'] },
+    { id:'f931',        words:['f.931','f931','suss','siradig','f572'] },
+    { id:'bienes_pers', words:['bienes personales'] },
+    { id:'imp_sellos',  words:['sellos'] },
+    { id:'imp_inmob',   words:['inmobiliario'] },
+    { id:'automotores', words:['automotor','patente'] },
+    { id:'sueldos',     words:['sueldo','remuneracion','remuneración'] },
+  ];
+  const getTributoId = (nombre) => {
+    const n = (nombre||'').toLowerCase();
+    for (const e of TRIBUTO_KEYWORDS) {
+      if (e.extra && !e.extra(n)) continue;
+      if (e.words.some(w => n.includes(w))) return e.id;
+    }
+    return null;
+  };
+  const getCuitRange = (nombre) => {
+    const m = (nombre||'').match(/CUIT[^0-9]*term[^0-9]*(\d)\s*[-–y]\s*(\d)/i);
+    if (!m) return null;
+    const from = parseInt(m[1]), to = parseInt(m[2]);
+    return Array.from({length: to-from+1}, (_,i) => from+i);
+  };
+  const getCuitDigit = (cuit) => {
+    const l = (cuit||'').replace(/[-\s]/g,'');
+    return l.length < 2 ? NaN : parseInt(l[l.length-2]);
+  };
+  const hasMatchingClients = (v) => {
+    const tid = getTributoId(v.nombre);
+    if (!tid) return false;
+    const cr = getCuitRange(v.nombre);
+    return activeClients.some(c => {
+      const tiene = Array.isArray(c.tributos) && c.tributos.some(t => t.id === tid);
+      if (!tiene) return false;
+      if (cr) { const d = getCuitDigit(c.cuit); return !isNaN(d) && cr.includes(d); }
+      return true;
+    });
+  };
+
+  // ── Vencimientos filtrados con lógica de clientes ────
+  const mesActualKey = todayStr.slice(0,7);
+
+  // Solo los que tienen clientes dados de alta con ese tributo
+  const vencConClientes = vencimientos.filter(v => !v.presentado && hasMatchingClients(v));
+
+  // Stat card: venc del mes actual (pendientes)
+  const vencDelMes = vencConClientes.filter(v => v.fecha && v.fecha.startsWith(mesActualKey)).length;
+
+  // Urgentes (≤7 días, no presentados)
+  const vencUrgentes = vencConClientes.filter(v => {
+    const d = daysUntil(v.fecha);
+    return d >= -1 && d <= 7;
+  }).length;
+
+  // Próximos 30 días para stat card
+  const vencProximos30 = vencConClientes.filter(v => {
+    const d = daysUntil(v.fecha);
+    return d >= 0 && d <= 30;
+  }).length;
+
+  // Lista del dashboard: próximos 8 vencimientos ordenados por fecha
+  // Deduplicamos por vencId para no repetir el mismo vencimiento por cada cliente
+  const vencListaUniq = [];
+  const vencIdsSeen = new Set();
+  [...vencConClientes]
+    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha))
+    .filter(v => { const d = daysUntil(v.fecha); return d >= -3 && d <= 30; })
+    .forEach(v => {
+      if (!vencIdsSeen.has(v.id)) {
+        vencIdsSeen.add(v.id);
+        // Contar cuántos clientes aplican
+        const tid = getTributoId(v.nombre);
+        const cr  = getCuitRange(v.nombre);
+        const matchedCount = tid ? activeClients.filter(c => {
+          const tiene = Array.isArray(c.tributos) && c.tributos.some(t => t.id === tid);
+          if (!tiene) return false;
+          if (cr) { const d = getCuitDigit(c.cuit); return !isNaN(d) && cr.includes(d); }
+          return true;
+        }).length : 0;
+        vencListaUniq.push({...v, _matchedCount: matchedCount});
+      }
+    });
+  const vencLista = vencListaUniq.slice(0, 8);
 
   return (
     <div>
@@ -1039,7 +1124,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           <div className="page-subtitle">{dayName}, {dateDisplay} · Todo listo para arrancar</div>
         </div>
         <div className="page-date" style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end'}}>
-          <div style={{fontWeight:700, color:'var(--black)', fontSize:14}}>{activeClients.length} clientes activos</div>
+          <div style={{fontWeight:700,color:'var(--black)',fontSize:14}}>{activeClients.length} clientes activos</div>
           <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={()=>exportToExcel(
             clients.map(c=>({'Cliente':c.nombre,'Tipo':c.tipo,'Honorario':c.honorario,'Saldo':c.saldoPendiente,'Estado':c.estado})),
             'Dashboard_Clientes'
@@ -1047,13 +1132,23 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
         </div>
       </div>
 
-      {vencUrgentes > 0 && (
+      {/* ── ALERTA URGENTE — usa vencDelMes ── */}
+      {(vencUrgentes > 0 || vencDelMes > 0) && (
         <div className="alert alert-red" style={{marginBottom:20}}>
           <span>🚨</span>
-          <span><strong>{vencUrgentes} vencimiento{vencUrgentes > 1 ? 's' : ''}</strong> en los próximos 7 días. Revisá la sección de vencimientos.</span>
+          <span>
+            {vencUrgentes > 0 && (
+              <><strong>{vencUrgentes} vencimiento{vencUrgentes>1?'s':''} urgente{vencUrgentes>1?'s':''}</strong> (próximos 7 días). </>
+            )}
+            {vencDelMes > 0 && (
+              <><strong>{vencDelMes} vencimiento{vencDelMes>1?'s':''}</strong> este mes ({MONTHS_FULL[now.getMonth()]}). </>
+            )}
+            <span style={{cursor:'pointer',textDecoration:'underline'}} onClick={()=>setSection('vencimientos')}>Ver todos →</span>
+          </span>
         </div>
       )}
 
+      {/* ── STAT CARDS ── */}
       <div className="stats-grid">
         <div className="stat-card stat-card-link" onClick={()=>setSection('clientes')} title="Ver clientes">
           <div className="stat-icon">👥</div>
@@ -1071,12 +1166,12 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
         </div>
         <div className="stat-card stat-card-link" onClick={()=>setSection('vencimientos')} title="Ver vencimientos">
           <div className="stat-icon">📅</div>
-          <div className="stat-label">Vencimientos Próximos</div>
+          <div className="stat-label">Venc. del Mes</div>
           <div className="stat-value" style={{color: vencUrgentes > 0 ? 'var(--red)' : 'var(--black)'}}>
-            {vencimientos.filter(v => !v.completado && daysUntil(v.fecha) <= 30).length}
+            {vencDelMes}
           </div>
           <div className="stat-delta" style={{color: vencUrgentes > 0 ? 'var(--red)' : ''}}>
-            {vencUrgentes > 0 ? `${vencUrgentes} urgentes` : 'En los próximos 30 días'}
+            {vencUrgentes > 0 ? `${vencUrgentes} urgentes · ${vencProximos30} en 30d` : `${vencProximos30} en los próximos 30 días`}
           </div>
           <div className="stat-card-arrow">→</div>
         </div>
@@ -1094,34 +1189,62 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
       </div>
 
       <div className="grid-6040" style={{marginBottom:24}}>
-        {/* VENCIMIENTOS */}
+        {/* ── VENCIMIENTOS — solo con clientes dados de alta ── */}
         <div className="card">
-          <div className="card-title"><span>📅</span> Próximos Vencimientos</div>
-          {pendientesHoy.length === 0
-            ? <div className="empty-state"><div className="empty-icon">🎉</div><p>Sin vencimientos próximos</p></div>
-            : pendientesHoy.map(v => {
-              const days = daysUntil(v.fecha);
-              const uc = urgencyClass(days);
-              const d = new Date(v.fecha + 'T12:00:00');
+          <div className="card-title" style={{justifyContent:'space-between'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span>📅</span> Próximos Vencimientos
+            </div>
+            <span style={{fontSize:11,color:'var(--gray)',fontWeight:400,
+              fontFamily:'JetBrains Mono,monospace',cursor:'pointer'}}
+              onClick={()=>setSection('vencimientos')}>
+              ver todos →
+            </span>
+          </div>
+
+          {vencLista.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🎉</div>
+              <p>Sin vencimientos próximos con clientes activos</p>
+            </div>
+          ) : (
+            vencLista.map(v => {
+              const d  = daysUntil(v.fecha);
+              const uc = urgencyClass(d);
+              const dt = new Date(v.fecha + 'T12:00:00');
               return (
-                <div className="venc-item" key={v.id}>
+                <div className="venc-item" key={v.id} style={{cursor:'pointer'}}
+                  onClick={()=>setSection('vencimientos')}>
                   <div className={`venc-date-box ${uc}`}>
-                    <div className="day">{d.getDate()}</div>
-                    <div className="month">{MONTHS_ES[d.getMonth()]}</div>
+                    <div className="day">{dt.getDate()}</div>
+                    <div className="month">{MONTHS_ES[dt.getMonth()]}</div>
                   </div>
-                  <div className="venc-info">
+                  <div className="venc-info" style={{flex:1,minWidth:0}}>
                     <div className="venc-name">{v.nombre}</div>
-                    <div className="venc-client">
-                      {v.clientes} · {days < 0 ? <span style={{color:'var(--red)', fontWeight:600}}>Vencido</span> : days === 0 ? <span style={{color:'var(--red)', fontWeight:600}}>HOY</span> : `${days}d`}
+                    <div className="venc-client" style={{display:'flex',alignItems:'center',gap:6}}>
+                      {v._matchedCount > 0 && (
+                        <span style={{fontSize:10,background:'rgba(201,169,110,0.15)',
+                          color:'var(--gold)',padding:'1px 6px',borderRadius:99,
+                          fontWeight:700,fontFamily:'JetBrains Mono,monospace'}}>
+                          {v._matchedCount} cliente{v._matchedCount!==1?'s':''}
+                        </span>
+                      )}
+                      <span>
+                        {d < 0
+                          ? <span style={{color:'var(--red)',fontWeight:600}}>Vencido hace {Math.abs(d)}d</span>
+                          : d === 0
+                          ? <span style={{color:'var(--red)',fontWeight:600}}>HOY</span>
+                          : `${d}d`}
+                      </span>
                     </div>
                   </div>
-                  <span className={`badge badge-${uc === 'urgent' ? 'red' : uc === 'soon' ? 'amber' : 'green'}`}>
-                    {uc === 'urgent' ? '🚨 Urgente' : uc === 'soon' ? '⚠️ Pronto' : '✓ OK'}
+                  <span className={`badge badge-${uc==='urgent'?'red':uc==='soon'?'amber':'green'}`}>
+                    {uc==='urgent'?'🚨 Urgente':uc==='soon'?'⚠️ Pronto':'✓ OK'}
                   </span>
                 </div>
               );
             })
-          }
+          )}
         </div>
 
         {/* TAREAS */}
@@ -1130,24 +1253,24 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
           {tareasP.length === 0
             ? <div className="empty-state"><div className="empty-icon">✨</div><p>Todo al día</p></div>
             : tareasP.map(t => (
-              <div className="task-item" key={t.id} style={{opacity: t.completado ? 0.5 : 1, transition:'opacity 0.3s'}}>
-                <div className={`task-check ${t.completado ? 'done' : ''}`}
+              <div className="task-item" key={t.id} style={{opacity:t.completado?0.5:1,transition:'opacity 0.3s'}}>
+                <div className={`task-check ${t.completado?'done':''}`}
                   style={{cursor:'pointer'}}
                   onClick={async () => {
                     try { await FB().updateDoc(FB().doc(FB().db,'tareas',t.id),{completado:true}); } catch(e){}
-                    setTareas(prev => prev.map(x => x.id===t.id ? {...x,completado:true} : x));
-                    setTimeout(() => setTareas(prev => prev.filter(x => x.id!==t.id || !x.completado)), 600);
+                    setTareas(prev => prev.map(x => x.id===t.id?{...x,completado:true}:x));
+                    setTimeout(()=>setTareas(prev=>prev.filter(x=>x.id!==t.id||!x.completado)),600);
                   }} />
                 <div style={{flex:1}}>
-                  <div className={`task-text ${t.completado ? 'done' : ''}`}>{t.texto}</div>
+                  <div className={`task-text ${t.completado?'done':''}`}>{t.texto}</div>
                   {t.cliente && <div className="task-meta">📁 {t.cliente}</div>}
                 </div>
               </div>
             ))
           }
-          {tareas.filter(t => !t.completado).length > 5 && (
-            <div style={{marginTop:8, fontSize:12, color:'var(--gray)', cursor:'pointer'}} onClick={()=>setSection('tareas')}>
-              + {tareas.filter(t => !t.completado).length - 5} más pendientes →
+          {tareas.filter(t=>!t.completado).length > 5 && (
+            <div style={{marginTop:8,fontSize:12,color:'var(--gray)',cursor:'pointer'}} onClick={()=>setSection('tareas')}>
+              + {tareas.filter(t=>!t.completado).length-5} más pendientes →
             </div>
           )}
         </div>
@@ -1174,19 +1297,19 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
                   onClick={()=>{ setSection('clientes'); setTimeout(()=>window.__openClient&&window.__openClient(c.id),100); }}>
                   <td style={{fontWeight:600,color:'var(--black)'}}>{c.nombre}</td>
                   <td>
-                    <span className={`badge ${c.tipo === 'sociedad' ? 'badge-blue' : c.tipo === 'responsable_inscripto' ? 'badge-amber' : c.tipo === 'monotributista' ? 'badge-gold' : 'badge-gray'}`}>
-                      {c.tipo === 'sociedad' ? '🏢 Sociedad' : c.tipo === 'responsable_inscripto' ? '📊 Resp. Inscripto' : c.tipo === 'monotributista' ? '📋 Monotributo' : '🔵 Exento'}
+                    <span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>
+                      {c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 Resp. Inscripto':c.tipo==='monotributista'?'📋 Monotributo':'🔵 Exento'}
                     </span>
                   </td>
                   <td style={{fontSize:13}}>{c.servicio}</td>
-                  <td style={{fontFamily:'JetBrains Mono, monospace', fontSize:13}}>{fmt(c.honorario)}</td>
+                  <td style={{fontFamily:'JetBrains Mono, monospace',fontSize:13}}>{fmt(c.honorario)}</td>
                   <td>
                     {c.saldoPendiente > 0
-                      ? <span style={{color:'var(--amber)', fontWeight:600, fontFamily:'JetBrains Mono, monospace', fontSize:13}}>{fmt(c.saldoPendiente)}</span>
+                      ? <span style={{color:'var(--amber)',fontWeight:600,fontFamily:'JetBrains Mono, monospace',fontSize:13}}>{fmt(c.saldoPendiente)}</span>
                       : <span className="badge badge-green">Al día</span>
                     }
                   </td>
-                  <td><span className={`badge ${c.estado === 'activo' ? 'badge-green' : 'badge-red'}`}>{c.estado}</span></td>
+                  <td><span className={`badge ${c.estado==='activo'?'badge-green':'badge-red'}`}>{c.estado}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -2643,6 +2766,132 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
 
   const pendientesMuyUrgentes = allRows.filter(r => !r.presentado && r.dias >= 0 && r.dias <= 7);
 
+  // ── Agrupar filas por mes (YYYY-MM) ─────────────────
+  const groupByMonth = (rows) => {
+    const map = {};
+    rows.forEach(r => {
+      const key = r.fecha ? r.fecha.slice(0,7) : 'sin-fecha';
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    // Ordenar meses cronológicamente
+    return Object.entries(map).sort(([a],[b]) => a.localeCompare(b));
+  };
+
+  const monthGroups = groupByMonth(sorted);
+
+  // Meses colapsados — por defecto todos abiertos excepto los pasados en tab presentados
+  const defaultCollapsed = () => {
+    const s = new Set();
+    if (tab === 'presentados') {
+      const currentYM = todayStr.slice(0,7);
+      monthGroups.forEach(([key]) => { if (key < currentYM) s.add(key); });
+    }
+    return s;
+  };
+  const [collapsedMonths, setCollapsedMonths] = useState(() => defaultCollapsed());
+
+  // Reset collapsed cuando cambia el tab
+  React.useEffect(() => {
+    setCollapsedMonths(defaultCollapsed());
+  }, [tab]);
+
+  const toggleMonth = (key) => {
+    setCollapsedMonths(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const monthLabel = (key) => {
+    if (key === 'sin-fecha') return 'Sin fecha';
+    const [y, m] = key.split('-');
+    return `${MONTHS_FULL[parseInt(m)-1]} ${y}`;
+  };
+
+  // Color del header del mes según urgencia de las filas
+  const monthHeaderColor = (rows) => {
+    if (rows.every(r => r.presentado)) return { bg:'rgba(34,197,94,0.08)', accent:'#22c55e', label:'Completo' };
+    if (rows.some(r => !r.presentado && r.dias < 0))  return { bg:'rgba(192,57,43,0.08)', accent:'var(--red)',   label:'Con vencidos' };
+    if (rows.some(r => !r.presentado && r.dias <= 7))  return { bg:'rgba(201,124,30,0.08)', accent:'var(--amber)', label:'Urgente' };
+    return { bg:'rgba(201,169,110,0.06)', accent:'var(--gold)', label:null };
+  };
+
+  const colCount = tab === 'presentados' ? 6 : 5;
+
+  const TableRow = ({r}) => {
+    const c = rowColor(r);
+    return (
+      <tr key={r.id} style={{borderBottom:'1px solid var(--cream2)',borderLeft:c.border,
+        background:c.bg, opacity:r.presentado?0.75:1, transition:'background 0.15s'}}>
+
+        <td style={{padding:'10px 14px',fontWeight:600,color:'var(--black)',
+          maxWidth:170,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          {r.clienteNombre}
+        </td>
+
+        <td style={{padding:'10px 14px',color:'var(--black)',
+          maxWidth:230,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          <span style={{fontSize:10,padding:'2px 6px',borderRadius:4,marginRight:6,
+            background:'rgba(201,169,110,0.15)',color:'var(--gold)',fontWeight:700,
+            fontFamily:'JetBrains Mono,monospace',textTransform:'uppercase'}}>
+            {(r.tipo||'fisc').slice(0,4)}
+          </span>
+          {r.tributo}
+        </td>
+
+        <td style={{padding:'10px 14px'}}>
+          <span style={{display:'inline-block',minWidth:58,textAlign:'center',
+            padding:'4px 10px',borderRadius:20,fontWeight:700,fontSize:12,
+            fontFamily:'JetBrains Mono,monospace',background:c.badge,color:c.badgeTxt}}>
+            {c.label}
+          </span>
+        </td>
+
+        <td style={{padding:'10px 14px',fontFamily:'JetBrains Mono,monospace',
+          fontSize:12,color:'var(--gray)',whiteSpace:'nowrap'}}>
+          {fmtDate(r.fecha)}
+        </td>
+
+        {tab === 'presentados' && (
+          <td style={{padding:'10px 14px',fontFamily:'JetBrains Mono,monospace',
+            fontSize:12,color:'var(--green)',whiteSpace:'nowrap',fontWeight:600}}>
+            {r.fechaPresentado ? fmtDate(r.fechaPresentado) : '—'}
+          </td>
+        )}
+
+        <td style={{padding:'10px 16px 10px 10px'}}>
+          <div className="action-btns" style={{justifyContent:'flex-end'}}>
+            {!r.presentado ? (
+              <button onClick={()=>marcarPresentado(r.vencId, true)}
+                style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',
+                  borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Montserrat,sans-serif',
+                  fontSize:11,fontWeight:700,background:'rgba(34,197,94,0.15)',color:'#16a34a',
+                  transition:'all 0.15s',whiteSpace:'nowrap'}}
+                onMouseOver={e=>e.currentTarget.style.background='rgba(34,197,94,0.28)'}
+                onMouseOut={e=>e.currentTarget.style.background='rgba(34,197,94,0.15)'}>
+                ✅ Presentar
+              </button>
+            ) : (
+              <button onClick={()=>marcarPresentado(r.vencId, false)}
+                style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',
+                  borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Montserrat,sans-serif',
+                  fontSize:11,fontWeight:600,background:'rgba(107,114,128,0.1)',color:'var(--gray)',
+                  transition:'all 0.15s',whiteSpace:'nowrap'}}>
+                ↩ Deshacer
+              </button>
+            )}
+            <button className="btn-icon edit" title="Editar"
+              onClick={()=>openEdit(vencimientos.find(x=>x.id===r.vencId))}>✏️</button>
+            <button className="btn-icon trash" title="Eliminar"
+              onClick={()=>handleDelete(r.vencId)}>🗑️</button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div>
       {/* ── HEADER ── */}
@@ -2664,14 +2913,15 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
       {/* ── STATS RÁPIDAS ── */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,marginBottom:20}}>
         {[
-          {label:'Vencidos',    val:stats.vencidos,    color:'var(--red)',   icon:'🔴', t:'pendientes'},
-          {label:'Hoy',         val:stats.hoy,          color:'var(--gold)',  icon:'🟡', t:'pendientes'},
-          {label:'≤ 3 días',    val:stats.urgentes,    color:'var(--red)',   icon:'⚠️', t:'pendientes'},
-          {label:'Esta semana', val:stats.semana,       color:'var(--amber)', icon:'📅', t:'pendientes'},
-          {label:'Presentados', val:stats.presentados,  color:'var(--green)', icon:'✅', t:'presentados'},
+          {label:'Vencidos',    val:stats.vencidos,   color:'var(--red)',   icon:'🔴', t:'pendientes'},
+          {label:'Hoy',         val:stats.hoy,         color:'var(--gold)',  icon:'🟡', t:'pendientes'},
+          {label:'≤ 3 días',    val:stats.urgentes,   color:'var(--red)',   icon:'⚠️', t:'pendientes'},
+          {label:'Esta semana', val:stats.semana,      color:'var(--amber)', icon:'📅', t:'pendientes'},
+          {label:'Presentados', val:stats.presentados, color:'var(--green)', icon:'✅', t:'presentados'},
         ].map(s => (
-          <div key={s.label} className="card" style={{padding:'14px 16px',textAlign:'center',cursor:'pointer',
-            border:`1px solid ${s.color}25`, transition:'all 0.2s'}}
+          <div key={s.label} className="card"
+            style={{padding:'14px 16px',textAlign:'center',cursor:'pointer',
+              border:`1px solid ${s.color}25`,transition:'all 0.2s'}}
             onClick={()=>setTab(s.t)}>
             <div style={{fontSize:22,marginBottom:4}}>{s.icon}</div>
             <div style={{fontFamily:'Playfair Display,serif',fontSize:24,fontWeight:700,color:s.color,lineHeight:1}}>{s.val}</div>
@@ -2691,10 +2941,8 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
               {pendientesMuyUrgentes.length} vencimiento{pendientesMuyUrgentes.length!==1?'s':''} en los próximos 7 días
             </div>
             <div style={{fontSize:12,color:'rgba(250,248,243,0.6)',marginTop:3}}>
-              {[...new Map(pendientesMuyUrgentes.map(r=>[r.vencId,r])).values()]
-                .slice(0,4)
-                .map(r=>`${r.clienteNombre} · ${r.tributo} (${r.dias===0?'HOY':r.dias<0?'VENCIDO':r.dias+'d'})`)
-                .join('  |  ')}
+              {[...new Map(pendientesMuyUrgentes.map(r=>[r.vencId,r])).values()].slice(0,4)
+                .map(r=>`${r.clienteNombre} · ${r.tributo} (${r.dias===0?'HOY':r.dias<0?'VENCIDO':r.dias+'d'})`).join('  |  ')}
               {pendientesMuyUrgentes.length > 4 && ` y más...`}
             </div>
           </div>
@@ -2702,225 +2950,201 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
       )}
 
       {/* ── TABS + FILTROS ── */}
-      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-
-        {/* Tabs Pendientes / Presentados */}
+      <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
         <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10}}>
-          <button
-            style={{padding:'8px 20px',borderRadius:7,border:'none',cursor:'pointer',
-              fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:700,transition:'all 0.15s',
-              background: tab==='pendientes' ? 'var(--white)' : 'transparent',
-              color: tab==='pendientes' ? 'var(--black)' : 'var(--gray)',
-              boxShadow: tab==='pendientes' ? '0 2px 8px rgba(17,17,16,0.08)' : 'none'}}
-            onClick={()=>setTab('pendientes')}>
-            📋 Pendientes
-            {stats.pendientes > 0 && (
-              <span style={{marginLeft:7,background:'var(--red)',color:'#fff',
-                fontSize:10,fontFamily:'JetBrains Mono,monospace',padding:'1px 6px',
-                borderRadius:99,fontWeight:700}}>{stats.pendientes}</span>
-            )}
-          </button>
-          <button
-            style={{padding:'8px 20px',borderRadius:7,border:'none',cursor:'pointer',
-              fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:700,transition:'all 0.15s',
-              background: tab==='presentados' ? 'var(--white)' : 'transparent',
-              color: tab==='presentados' ? 'var(--black)' : 'var(--gray)',
-              boxShadow: tab==='presentados' ? '0 2px 8px rgba(17,17,16,0.08)' : 'none'}}
-            onClick={()=>setTab('presentados')}>
-            ✅ Presentados
-            {stats.presentados > 0 && (
-              <span style={{marginLeft:7,background:'#22c55e',color:'#fff',
-                fontSize:10,fontFamily:'JetBrains Mono,monospace',padding:'1px 6px',
-                borderRadius:99,fontWeight:700}}>{stats.presentados}</span>
-            )}
-          </button>
+          {[
+            {v:'pendientes', l:'📋 Pendientes', count:stats.pendientes, countColor:'var(--red)'},
+            {v:'presentados',l:'✅ Presentados', count:stats.presentados, countColor:'#22c55e'},
+          ].map(opt => (
+            <button key={opt.v}
+              style={{padding:'8px 20px',borderRadius:7,border:'none',cursor:'pointer',
+                fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:700,transition:'all 0.15s',
+                background:tab===opt.v?'var(--white)':'transparent',
+                color:tab===opt.v?'var(--black)':'var(--gray)',
+                boxShadow:tab===opt.v?'0 2px 8px rgba(17,17,16,0.08)':'none'}}
+              onClick={()=>setTab(opt.v)}>
+              {opt.l}
+              {opt.count > 0 && (
+                <span style={{marginLeft:7,background:opt.countColor,color:'#fff',
+                  fontSize:10,fontFamily:'JetBrains Mono,monospace',padding:'1px 6px',
+                  borderRadius:99,fontWeight:700}}>{opt.count}</span>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Buscador */}
-        <div className="search-wrap" style={{flex:1,maxWidth:280}}>
+        <div className="search-wrap" style={{flex:1,maxWidth:260}}>
           <span className="search-icon">🔍</span>
           <input className="search-input" placeholder="Buscar cliente..."
             value={filterCliente} onChange={e=>setFilterCliente(e.target.value)} />
         </div>
 
-        <div style={{marginLeft:'auto',fontSize:12,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>
-          {sorted.length} fila{sorted.length!==1?'s':''}
+        <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+          <button className="btn btn-ghost btn-sm"
+            onClick={()=>setCollapsedMonths(new Set())}
+            title="Expandir todos los meses" style={{fontSize:12}}>
+            ↕ Expandir todo
+          </button>
+          <button className="btn btn-ghost btn-sm"
+            onClick={()=>setCollapsedMonths(new Set(monthGroups.map(([k])=>k)))}
+            title="Colapsar todos los meses" style={{fontSize:12}}>
+            ↕ Colapsar todo
+          </button>
         </div>
       </div>
 
-      {/* ── TABLA PRINCIPAL ── */}
-      <div className="card" style={{padding:0,overflow:'hidden'}}>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-            <thead>
-              <tr style={{background:'linear-gradient(135deg,var(--black),var(--black2))'}}>
-                {[
-                  {col:'clienteNombre', label:'Cliente'},
-                  {col:'tributo',       label:'Tributo / Descripción'},
-                  {col:'dias',          label:'Días'},
-                  {col:'fecha',         label:'Fecha venc.'},
-                  ...(tab==='presentados' ? [{col:'fechaPresentado', label:'Presentado el'}] : []),
-                  {col:'prioridad',     label:'Prior.'},
-                ].map(h => (
-                  <th key={h.col}
-                    onClick={()=>handleSort(h.col)}
-                    style={{padding:'12px 14px',textAlign:'left',color:'var(--cream)',
-                      fontWeight:600,fontSize:11,fontFamily:'JetBrains Mono,monospace',
-                      cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
-                    {h.label}<SortIcon col={h.col}/>
-                  </th>
-                ))}
-                <th style={{padding:'12px 14px',color:'var(--cream)',fontSize:11,
-                  fontFamily:'JetBrains Mono,monospace',textAlign:'right',paddingRight:20}}>
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.length === 0 && (
-                <tr>
-                  <td colSpan={tab==='presentados'?7:6} style={{padding:'60px 20px',textAlign:'center',color:'var(--gray2)'}}>
-                    <div style={{fontSize:40,marginBottom:12}}>{tab==='presentados'?'✅':'📅'}</div>
-                    <div style={{fontSize:14}}>
-                      {tab==='presentados'
-                        ? 'Todavía no hay vencimientos presentados'
-                        : 'No hay vencimientos pendientes'}
-                    </div>
-                    {tab==='pendientes' && (
-                      <div style={{fontSize:12,color:'var(--gray2)',marginTop:6}}>
-                        Recordá que solo aparecen vencimientos cuyos tributos están dados de alta en algún cliente activo
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )}
-              {sorted.map((r) => {
-                const c = rowColor(r);
-                return (
-                  <tr key={r.id}
-                    style={{
-                      borderBottom:'1px solid var(--cream2)',
-                      borderLeft: c.border,
-                      background: c.bg,
-                      opacity: r.presentado ? 0.7 : 1,
-                      transition: 'background 0.15s',
-                    }}>
-
-                    {/* Cliente */}
-                    <td style={{padding:'11px 14px',fontWeight:600,
-                      color:'var(--black)',maxWidth:180,overflow:'hidden',
-                      textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                      {r.clienteNombre}
-                    </td>
-
-                    {/* Tributo */}
-                    <td style={{padding:'11px 14px',color:'var(--black)',
-                      maxWidth:240,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                      <span style={{fontSize:10,padding:'2px 6px',borderRadius:4,marginRight:6,
-                        background:'rgba(201,169,110,0.15)',color:'var(--gold)',
-                        fontWeight:700,fontFamily:'JetBrains Mono,monospace',
-                        textTransform:'uppercase'}}>
-                        {(r.tipo||'fiscal').slice(0,4)}
-                      </span>
-                      {r.tributo}
-                    </td>
-
-                    {/* Días */}
-                    <td style={{padding:'11px 14px'}}>
-                      <span style={{
-                        display:'inline-block',minWidth:58,textAlign:'center',
-                        padding:'4px 10px',borderRadius:20,fontWeight:700,fontSize:12,
-                        fontFamily:'JetBrains Mono,monospace',
-                        background: c.badge, color: c.badgeTxt,
-                      }}>
-                        {c.label}
-                      </span>
-                    </td>
-
-                    {/* Fecha vencimiento */}
-                    <td style={{padding:'11px 14px',fontFamily:'JetBrains Mono,monospace',
-                      fontSize:12,color:'var(--gray)',whiteSpace:'nowrap'}}>
-                      {fmtDate(r.fecha)}
-                    </td>
-
-                    {/* Fecha presentado (solo en tab presentados) */}
-                    {tab === 'presentados' && (
-                      <td style={{padding:'11px 14px',fontFamily:'JetBrains Mono,monospace',
-                        fontSize:12,color:'var(--green)',whiteSpace:'nowrap',fontWeight:600}}>
-                        {r.fechaPresentado ? fmtDate(r.fechaPresentado) : '—'}
-                      </td>
-                    )}
-
-                    {/* Prioridad */}
-                    <td style={{padding:'11px 14px'}}>
-                      <span className={`badge ${r.prioridad==='alta'?'badge-red':r.prioridad==='baja'?'badge-green':'badge-gold'}`}
-                        style={{fontSize:9}}>
-                        {r.prioridad||'media'}
-                      </span>
-                    </td>
-
-                    {/* Acciones */}
-                    <td style={{padding:'11px 16px 11px 14px'}}>
-                      <div className="action-btns" style={{justifyContent:'flex-end'}}>
-                        {!r.presentado ? (
-                          <button
-                            title="Marcar como Presentado"
-                            onClick={()=>marcarPresentado(r.vencId, true)}
-                            style={{
-                              display:'inline-flex',alignItems:'center',gap:5,
-                              padding:'5px 12px',borderRadius:7,border:'none',cursor:'pointer',
-                              fontFamily:'Montserrat,sans-serif',fontSize:12,fontWeight:700,
-                              background:'rgba(34,197,94,0.15)',color:'#16a34a',
-                              transition:'all 0.15s',whiteSpace:'nowrap',
-                            }}
-                            onMouseOver={e=>e.currentTarget.style.background='rgba(34,197,94,0.28)'}
-                            onMouseOut={e=>e.currentTarget.style.background='rgba(34,197,94,0.15)'}>
-                            ✅ Presentar
-                          </button>
-                        ) : (
-                          <button
-                            title="Deshacer presentación"
-                            onClick={()=>marcarPresentado(r.vencId, false)}
-                            style={{
-                              display:'inline-flex',alignItems:'center',gap:5,
-                              padding:'5px 10px',borderRadius:7,border:'none',cursor:'pointer',
-                              fontFamily:'Montserrat,sans-serif',fontSize:11,fontWeight:600,
-                              background:'rgba(107,114,128,0.12)',color:'var(--gray)',
-                              transition:'all 0.15s',whiteSpace:'nowrap',
-                            }}>
-                            ↩ Deshacer
-                          </button>
-                        )}
-                        <button className="btn-icon edit" title="Editar"
-                          onClick={()=>openEdit(vencimientos.find(x=>x.id===r.vencId))}>✏️</button>
-                        <button className="btn-icon trash" title="Eliminar"
-                          onClick={()=>handleDelete(r.vencId)}>🗑️</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Leyenda de colores — solo en pendientes */}
-        {tab === 'pendientes' && (
-          <div style={{padding:'10px 20px',borderTop:'1px solid var(--cream2)',
-            display:'flex',gap:16,flexWrap:'wrap',background:'var(--cream)'}}>
-            {[
-              ['var(--red)',   'Vencido / ≤ 3 días'],
-              ['var(--amber)', '4–7 días'],
-              ['var(--gold2)', '8–15 días'],
-            ].map(([color,label]) => (
-              <div key={label} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--gray)'}}>
-                <div style={{width:10,height:10,borderRadius:2,background:color,flexShrink:0}} />
-                {label}
-              </div>
-            ))}
+      {/* ── GRUPOS POR MES ── */}
+      {sorted.length === 0 ? (
+        <div className="card" style={{padding:'60px 20px',textAlign:'center',color:'var(--gray2)'}}>
+          <div style={{fontSize:40,marginBottom:12}}>{tab==='presentados'?'✅':'📅'}</div>
+          <div style={{fontSize:14}}>
+            {tab==='presentados' ? 'Todavía no hay vencimientos presentados' : 'No hay vencimientos pendientes'}
           </div>
-        )}
-      </div>
+          {tab==='pendientes' && (
+            <div style={{fontSize:12,color:'var(--gray2)',marginTop:6}}>
+              Solo aparecen vencimientos cuyos tributos están dados de alta en al menos un cliente activo
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {monthGroups.map(([key, rows]) => {
+            const isCollapsed = collapsedMonths.has(key);
+            const mh = monthHeaderColor(rows);
+            const pendientesEnMes = rows.filter(r => !r.presentado).length;
+            const presentadosEnMes = rows.filter(r => r.presentado).length;
+            const isMesCurrent = key === todayStr.slice(0,7);
+            const isMesPast    = key < todayStr.slice(0,7);
+
+            return (
+              <div key={key} className="card" style={{padding:0,overflow:'hidden',
+                border:`1px solid ${mh.accent}30`}}>
+
+                {/* ── Header del mes (clickeable para colapsar) ── */}
+                <div onClick={()=>toggleMonth(key)}
+                  style={{
+                    background: isMesCurrent
+                      ? 'linear-gradient(135deg,var(--black),var(--black2))'
+                      : mh.bg,
+                    padding:'13px 20px',
+                    display:'flex',alignItems:'center',gap:12,
+                    cursor:'pointer',userSelect:'none',
+                    borderBottom: isCollapsed ? 'none' : `1px solid ${mh.accent}25`,
+                    transition:'background 0.15s',
+                  }}>
+
+                  {/* Flecha colapsar */}
+                  <div style={{
+                    width:22,height:22,borderRadius:6,
+                    background: isMesCurrent ? 'rgba(201,169,110,0.2)' : 'rgba(0,0,0,0.06)',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:11,fontWeight:700,flexShrink:0,
+                    color: isMesCurrent ? 'var(--gold2)' : mh.accent,
+                    transition:'transform 0.2s',
+                    transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                  }}>▼</div>
+
+                  {/* Nombre del mes */}
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,
+                    color: isMesCurrent ? 'var(--gold2)' : 'var(--black)',flex:1}}>
+                    {monthLabel(key)}
+                    {isMesCurrent && (
+                      <span style={{marginLeft:10,fontSize:10,fontWeight:600,
+                        fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(201,169,110,0.2)',color:'var(--gold2)',
+                        padding:'2px 8px',borderRadius:99,verticalAlign:'middle'}}>
+                        MES ACTUAL
+                      </span>
+                    )}
+                    {isMesPast && tab==='pendientes' && pendientesEnMes > 0 && (
+                      <span style={{marginLeft:10,fontSize:10,fontWeight:600,
+                        fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(192,57,43,0.15)',color:'var(--red)',
+                        padding:'2px 8px',borderRadius:99,verticalAlign:'middle'}}>
+                        VENCIDO
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Contadores */}
+                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    {tab === 'pendientes' && pendientesEnMes > 0 && (
+                      <span style={{fontSize:11,fontWeight:700,
+                        fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(192,57,43,0.12)',color:'var(--red)',
+                        padding:'3px 10px',borderRadius:99}}>
+                        {pendientesEnMes} pendiente{pendientesEnMes!==1?'s':''}
+                      </span>
+                    )}
+                    {presentadosEnMes > 0 && (
+                      <span style={{fontSize:11,fontWeight:700,
+                        fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(34,197,94,0.12)',color:'#16a34a',
+                        padding:'3px 10px',borderRadius:99}}>
+                        ✓ {presentadosEnMes}
+                      </span>
+                    )}
+                    <span style={{fontSize:11,color:isMesCurrent?'rgba(250,248,243,0.5)':'var(--gray2)',
+                      fontFamily:'JetBrains Mono,monospace'}}>
+                      {rows.length} total
+                    </span>
+                  </div>
+                </div>
+
+                {/* ── Tabla del mes (se oculta si colapsado) ── */}
+                {!isCollapsed && (
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                      <thead>
+                        <tr style={{background:'rgba(201,169,110,0.06)',
+                          borderBottom:'1px solid rgba(201,169,110,0.15)'}}>
+                          {[
+                            {col:'clienteNombre', label:'Cliente'},
+                            {col:'tributo',       label:'Tributo / Descripción'},
+                            {col:'dias',          label:'Días'},
+                            {col:'fecha',         label:'Fecha venc.'},
+                            ...(tab==='presentados' ? [{col:'fechaPresentado', label:'Presentado el'}] : []),
+                          ].map(h => (
+                            <th key={h.col} onClick={()=>handleSort(h.col)}
+                              style={{padding:'9px 14px',textAlign:'left',
+                                color:'var(--gray)',fontWeight:700,fontSize:11,
+                                fontFamily:'JetBrains Mono,monospace',
+                                cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',
+                                letterSpacing:'0.3px',textTransform:'uppercase'}}>
+                              {h.label}<SortIcon col={h.col}/>
+                            </th>
+                          ))}
+                          <th style={{padding:'9px 14px',textAlign:'right',
+                            color:'var(--gray)',fontSize:11,
+                            fontFamily:'JetBrains Mono,monospace',
+                            textTransform:'uppercase',letterSpacing:'0.3px'}}>
+                            Acciones
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(r => <TableRow key={r.id} r={r} />)}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Leyenda */}
+      {tab === 'pendientes' && sorted.length > 0 && (
+        <div style={{display:'flex',gap:16,flexWrap:'wrap',marginTop:14,paddingLeft:4}}>
+          {[['var(--red)','Vencido / ≤ 3 días'],['var(--amber)','4–7 días'],['var(--gold2)','8–15 días']].map(([color,label]) => (
+            <div key={label} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--gray)'}}>
+              <div style={{width:10,height:10,borderRadius:2,background:color,flexShrink:0}} />
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── MODAL FORMULARIO ── */}
       {modal === 'form' && (
