@@ -2264,12 +2264,12 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
 }
 
 
-// ── COBROS ────────────────────────────────────────────
+// ── COBROS + FACTURACIÓN UNIFICADO ───────────────────
 const MEDIOS_PAGO = [
-  { id: 'efectivo',    label: 'Efectivo',       icon: '💵', subs: [] },
-  { id: 'transferencia', label: 'Transferencia', icon: '🏦', subs: ['Banco Provincia','Banco Nación','Banco Galicia','Mercado Pago','BBVA','HSBC','Otro banco'] },
-  { id: 'cheque',      label: 'Cheque',         icon: '📄', subs: [] },
-  { id: 'mp',          label: 'Mercado Pago',   icon: '💙', subs: [] },
+  { id: 'efectivo',      label: 'Efectivo',       icon: '💵', subs: [] },
+  { id: 'transferencia', label: 'Transferencia',  icon: '🏦', subs: ['Banco Provincia','Banco Nación','Banco Galicia','Mercado Pago','BBVA','HSBC','Otro banco'] },
+  { id: 'cheque',        label: 'Cheque',         icon: '📄', subs: [] },
+  { id: 'mp',            label: 'Mercado Pago',   icon: '💙', subs: [] },
 ];
 const NATURALEZAS_COBRO = [
   'Honorarios mensuales','Honorario por consulta','Consultoría puntual',
@@ -2277,199 +2277,506 @@ const NATURALEZAS_COBRO = [
   'Asesoría extraordinaria','Regularización de deuda','Adelanto',
   'Saldo pendiente','Otro',
 ];
+const MEDIO_LABEL = { efectivo:'💵 Efectivo', transferencia:'🏦 Transferencia', cheque:'📄 Cheque', mp:'💙 Mercado Pago' };
 
-function Cobros({ clients, setClients, cobros, setCobros }) {
-  const [modal, setModal]     = useState(false);
-  const [editItem, setEditItem] = useState(null); // cobro being edited
-  const [form, setForm]       = useState({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
-  const [saving, setSaving]   = useState(false);
-  const [filter, setFilter]   = useState('todos');
+function Cobros({ clients, setClients, facturas, setFacturas, cobros, setCobros }) {
+  const now = new Date();
+  const mesActualKey = todayStr.slice(0,7);
 
-  const clientesConDeuda = clients.filter(c => c.saldoPendiente > 0);
+  // ── Estado ──────────────────────────────────────────
+  const [tab,       setTab]       = useState('pendientes'); // 'pendientes' | 'cobrados'
+  const [modal,     setModal]     = useState(false);
+  const [editItem,  setEditItem]  = useState(null);
+  const [cobroCtx,  setCobroCtx]  = useState(null); // factura desde la que se abre el modal
+  const [saving,    setSaving]    = useState(false);
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [form, setForm] = useState({
+    clienteId:'', monto:'', naturaleza:'Honorarios mensuales',
+    medio:'efectivo', submedio:'', fecha:todayStr, notas:''
+  });
 
-  const filtered = filter==='todos' ? cobros :
-    cobros.filter(c => c.medio===filter);
+  // ── Construir filas: una por cliente activo con honorario ──
+  // Fuente de verdad: clients con honorario > 0 (activos)
+  // Para cada mes, generar una fila por cliente
+  // Estado cobrado: si existe cobro en cobros[] para ese cliente y ese mes
 
-  const totalMes = cobros
-    .filter(c => c.fecha && c.fecha.startsWith(todayStr.slice(0,7)))
-    .reduce((s,c) => s+(c.monto||0),0);
-  const totalGeneral = cobros.reduce((s,c) => s+(c.monto||0),0);
+  // Todos los meses conocidos (de facturas + cobros + mes actual)
+  const allMeses = [...new Set([
+    mesActualKey,
+    ...facturas.map(f => (f.fecha||'').slice(0,7)),
+    ...cobros.map(c => (c.fecha||'').slice(0,7)),
+  ])].filter(Boolean).sort().reverse();
 
-  const selectedClient = clients.find(c=>c.id===form.clienteId);
+  const activeClients = clients.filter(c => c.estado === 'activo' && (c.honorario||0) > 0);
+
+  // Para un cliente y un mes, buscar si ya tiene cobro registrado
+  const getCobrosDelMes = (clienteId, mesKey) =>
+    cobros.filter(c => c.clienteId === clienteId && (c.fecha||'').startsWith(mesKey));
+
+  const getFacturasDelMes = (clienteId, mesKey) =>
+    facturas.filter(f => (f.clienteId === clienteId || clients.find(c=>c.nombre===f.cliente)?.id === clienteId)
+      && (f.fecha||'').startsWith(mesKey));
+
+  // Construir filas por mes
+  const buildMesRows = (mesKey) => {
+    return activeClients.map(c => {
+      const cobrosC  = getCobrosDelMes(c.id, mesKey);
+      const facturasC = getFacturasDelMes(c.id, mesKey);
+      const montoCobrado = cobrosC.reduce((s,x) => s + (Number(x.monto)||0), 0);
+      const honorario    = Number(c.honorario) || 0;
+      const saldo        = Math.max(0, honorario - montoCobrado);
+      const cobrado      = montoCobrado >= honorario && honorario > 0;
+      const parcial      = montoCobrado > 0 && montoCobrado < honorario;
+      const medios       = [...new Set(cobrosC.map(x => MEDIO_LABEL[x.medio]||x.medio).filter(Boolean))];
+      return {
+        clienteId:    c.id,
+        clienteNombre:c.nombre,
+        honorario,
+        montoCobrado,
+        saldo,
+        cobrado,
+        parcial,
+        medios,
+        cobrosIds:    cobrosC.map(x=>x.id),
+        cobrosData:   cobrosC,
+        mesKey,
+      };
+    }).filter(r => r.honorario > 0);
+  };
+
+  // Grupos por mes filtrados según tab
+  const mesGroups = allMeses.map(m => ({
+    key: m,
+    rows: buildMesRows(m),
+  })).filter(g => {
+    if (tab === 'pendientes') return g.rows.some(r => !r.cobrado);
+    if (tab === 'cobrados')   return g.rows.some(r => r.cobrado || r.parcial);
+    return true;
+  });
+
+  // Stats
+  const totalPendiente = activeClients.reduce((s,c) => s + Math.max(0, (Number(c.honorario)||0) - getCobrosDelMes(c.id, mesActualKey).reduce((ss,x)=>ss+(Number(x.monto)||0),0)), 0);
+  const totalCobradoMes = cobros.filter(c=>(c.fecha||'').startsWith(mesActualKey)).reduce((s,c)=>s+(Number(c.monto)||0),0);
+  const totalHistorico  = cobros.reduce((s,c)=>s+(Number(c.monto)||0),0);
+  const clientesDeuda   = clients.filter(c=>c.saldoPendiente>0);
+
+  // Toggle mes colapsado
+  const toggleMes = (key) => setCollapsed(prev => {
+    const n = new Set(prev); n.has(key)?n.delete(key):n.add(key); return n;
+  });
+
+  // Abrir modal de cobro desde una fila
+  const openCobrar = (row) => {
+    setCobroCtx(row);
+    setEditItem(null);
+    setForm({
+      clienteId: row.clienteId,
+      monto: row.saldo > 0 ? String(row.saldo) : String(row.honorario),
+      naturaleza: 'Honorarios mensuales',
+      medio: 'efectivo', submedio: '',
+      fecha: todayStr, notas: '',
+    });
+    setModal(true);
+  };
+
+  const openNuevoCobro = () => {
+    setCobroCtx(null); setEditItem(null);
+    setForm({ clienteId:'', monto:'', naturaleza:'Honorarios mensuales', medio:'efectivo', submedio:'', fecha:todayStr, notas:'' });
+    setModal(true);
+  };
+
+  const openEditCobro = (cobro) => {
+    setCobroCtx(null); setEditItem(cobro);
+    setForm({ clienteId:cobro.clienteId||'', monto:cobro.monto||'', naturaleza:cobro.naturaleza||'Honorarios mensuales', medio:cobro.medio||'efectivo', submedio:cobro.submedio||'', fecha:cobro.fecha||todayStr, notas:cobro.notas||'' });
+    setModal(true);
+  };
 
   const handleSave = async () => {
     if (!form.clienteId || !form.monto || !form.fecha) return;
     setSaving(true);
     const cliente = clients.find(c=>c.id===form.clienteId);
     const cobro = {
-      clienteId: form.clienteId,
-      cliente: cliente?.nombre||'',
-      monto: Number(form.monto),
-      naturaleza: form.naturaleza,
-      medio: form.medio,
-      submedio: form.submedio||'',
-      fecha: form.fecha,
-      notas: form.notas||'',
-      tipo: 'ingreso',
+      clienteId: form.clienteId, cliente: cliente?.nombre||'',
+      monto: Number(form.monto), naturaleza: form.naturaleza,
+      medio: form.medio, submedio: form.submedio||'',
+      fecha: form.fecha, notas: form.notas||'', tipo:'ingreso',
     };
     try {
       if (editItem) {
-        // UPDATE existing
         try { await FB().updateDoc(FB().doc(FB().db,'cobros',editItem.id), cobro); } catch(e){}
         setCobros(prev=>prev.map(x=>x.id===editItem.id?{...cobro,id:editItem.id}:x));
         Swal.fire({ icon:'success', title:'Cobro actualizado', timer:1500, showConfirmButton:false, customClass:{popup:'swal-ap'} });
       } else {
-        // CREATE new
         let saved;
         try {
           const fb = FB();
-          const ref = await fb.addDoc(fb.collection(fb.db,'cobros'), {...cobro, createdAt:fb.serverTimestamp()});
+          const ref = await fb.addDoc(fb.collection(fb.db,'cobros'),{...cobro,createdAt:fb.serverTimestamp()});
           saved = {...cobro, id:ref.id};
-        } catch(e) {
-          saved = {...cobro, id:'local-'+Date.now()};
-        }
+        } catch(e) { saved = {...cobro, id:'local-'+Date.now()}; }
         setCobros(prev=>[saved,...prev]);
-        // Update client saldo only on new cobro
-        if (cliente && Number(form.monto) > 0) {
-          const newSaldo = Math.max(0, (cliente.saldoPendiente||0) - Number(form.monto));
+        if (cliente && Number(form.monto)>0) {
+          const newSaldo = Math.max(0,(cliente.saldoPendiente||0)-Number(form.monto));
           try { await FB().updateDoc(FB().doc(FB().db,'clients',form.clienteId),{saldoPendiente:newSaldo}); } catch(e){}
           setClients(prev=>prev.map(c=>c.id===form.clienteId?{...c,saldoPendiente:newSaldo}:c));
         }
-        Swal.fire({ icon:'success', title:'Cobro registrado', text: fmt(Number(form.monto))+' · '+cliente?.nombre, timer:1800, showConfirmButton:false, customClass:{popup:'swal-ap'} });
+        Swal.fire({ icon:'success', title:'💰 Cobro registrado', text:fmt(Number(form.monto))+' · '+cliente?.nombre, timer:1800, showConfirmButton:false, customClass:{popup:'swal-ap'} });
       }
     } finally {
-      setSaving(false);
-      setModal(false);
-      setEditItem(null);
+      setSaving(false); setModal(false); setEditItem(null); setCobroCtx(null);
       setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''});
     }
   };
 
-  const openEdit = (cobro) => {
-    setEditItem(cobro);
-    setForm({ clienteId:cobro.clienteId||'', monto:cobro.monto||'', naturaleza:cobro.naturaleza||'Honorarios mensuales',
-      medio:cobro.medio||'efectivo', submedio:cobro.submedio||'', fecha:cobro.fecha||todayStr, notas:cobro.notas||'' });
-    setModal(true);
-  };
-
-  const handleDelete = async (id) => {
-    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar este cobro ', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
+  const handleDeleteCobro = async (id) => {
+    const result = await Swal.fire({ title:'¿Eliminar cobro?', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap'}, reverseButtons:true });
     if (!result.isConfirmed) return;
     try { await FB().deleteDoc(FB().doc(FB().db,'cobros',id)); } catch(e){}
     setCobros(prev=>prev.filter(x=>x.id!==id));
   };
 
+  const mesLabel = (key) => {
+    const [y,m] = key.split('-');
+    return `${MONTHS_FULL[parseInt(m)-1]} ${y}`;
+  };
+
+  const selectedClient = clients.find(c=>c.id===form.clienteId);
   const medioActual = MEDIOS_PAGO.find(m=>m.id===form.medio);
-  const MEDIO_LABEL = {efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',cheque:'📄 Cheque',mp:'💙 Mercado Pago'};
 
   return (
     <div>
+      {/* ── HEADER ── */}
       <div className="page-header">
         <div>
-          <div className="page-title">Cobros</div>
-          <div className="page-subtitle">Registrá cobros y generá recibos · {cobros.length} registros</div>
+          <div className="page-title">Facturación y Cobros</div>
+          <div className="page-subtitle">Honorarios mensuales por cliente · mes a mes</div>
         </div>
         <div style={{display:'flex',gap:8}}>
           <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
-            filtered.map(c=>({'N° Recibo':c.nroRecibo||'','Fecha':c.fecha,'Cliente':c.cliente,'Naturaleza':c.naturaleza,'Medio':c.medio+(c.submedio?' · '+c.submedio:''),'Monto':c.monto,'Notas':c.notas||''})),
+            cobros.map(c=>({'Fecha':c.fecha,'Cliente':c.cliente,'Concepto':c.naturaleza,'Medio':MEDIO_LABEL[c.medio]||c.medio,'Monto':c.monto,'Notas':c.notas||''})),
             'Cobros'
           )}>📥 Excel</button>
-          <button className="btn btn-gold" onClick={()=>{ setEditItem(null); setForm({clienteId:'',monto:'',naturaleza:'Honorarios mensuales',medio:'efectivo',submedio:'',fecha:todayStr,notas:''}); setModal(true); }}>
-            + Registrar Cobro
-          </button>
+          <button className="btn btn-gold" onClick={openNuevoCobro}>+ Registrar Cobro</button>
         </div>
       </div>
 
-      {clientesConDeuda.length>0 && (
-        <div className="alert alert-amber" style={{marginBottom:20}}>
-          <span>⚠️</span>
-          <span><strong>{clientesConDeuda.length} cliente{clientesConDeuda.length>1?'s':''}</strong> con saldo pendiente · Total: <strong>{fmt(clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0))}</strong></span>
+      {/* ── STATS ── */}
+      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:20}}>
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>setTab('pendientes')}>
+          <div className="stat-icon">⏳</div>
+          <div className="stat-label">Pendiente este mes</div>
+          <div className="stat-value" style={{color:totalPendiente>0?'var(--amber)':'var(--green)'}}>
+            {fmtShort(totalPendiente)}
+          </div>
+          <div className="stat-delta" style={{color:totalPendiente>0?'var(--amber)':'var(--green)'}}>
+            {totalPendiente>0?`${clientesDeuda.length} cliente${clientesDeuda.length!==1?'s':''} deben`:'Todo al día ✓'}
+          </div>
         </div>
-      )}
-
-      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:24}}>
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>setTab('cobrados')}>
           <div className="stat-icon">💰</div>
           <div className="stat-label">Cobrado este mes</div>
-          <div className="stat-value gold">{fmtShort(totalMes)}</div>
+          <div className="stat-value gold">{fmtShort(totalCobradoMes)}</div>
+          <div className="stat-delta up">
+            {MONTHS_FULL[now.getMonth()]} {now.getFullYear()}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon">📊</div>
           <div className="stat-label">Total histórico</div>
-          <div className="stat-value">{fmtShort(totalGeneral)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">⏳</div>
-          <div className="stat-label">Deuda pendiente</div>
-          <div className="stat-value" style={{color:clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0)>0?'var(--amber)':'var(--green)'}}>
-            {fmtShort(clientesConDeuda.reduce((s,c)=>s+(c.saldoPendiente||0),0))}
-          </div>
+          <div className="stat-value">{fmtShort(totalHistorico)}</div>
+          <div className="stat-delta">{cobros.length} cobros registrados</div>
         </div>
       </div>
 
-      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-        {[['todos','Todos'],['efectivo','💵 Efectivo'],['transferencia','🏦 Transferencia'],['mp','💙 Mercado Pago'],['cheque','📄 Cheque']].map(([f,l])=>(
-          <button key={f} className={`btn btn-sm ${filter===f?'btn-primary':'btn-ghost'}`} onClick={()=>setFilter(f)}>{l}</button>
-        ))}
+      {/* ── TABS ── */}
+      <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
+        <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10}}>
+          {[
+            {v:'pendientes', l:'⏳ Pendientes'},
+            {v:'cobrados',   l:'✅ Cobrados'},
+            {v:'todos',      l:'📋 Todos'},
+          ].map(opt=>(
+            <button key={opt.v}
+              style={{padding:'8px 18px',borderRadius:7,border:'none',cursor:'pointer',
+                fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:700,transition:'all 0.15s',
+                background:tab===opt.v?'var(--white)':'transparent',
+                color:tab===opt.v?'var(--black)':'var(--gray)',
+                boxShadow:tab===opt.v?'0 2px 8px rgba(17,17,16,0.08)':'none'}}
+              onClick={()=>setTab(opt.v)}>{opt.l}</button>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+          <button className="btn btn-ghost btn-sm" style={{fontSize:12}}
+            onClick={()=>setCollapsed(new Set())}>↕ Expandir todo</button>
+          <button className="btn btn-ghost btn-sm" style={{fontSize:12}}
+            onClick={()=>setCollapsed(new Set(mesGroups.map(g=>g.key)))}>↕ Colapsar todo</button>
+        </div>
       </div>
 
-      <div className="card" style={{padding:0,overflow:'hidden'}}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr>
-              <th>Fecha</th><th>Cliente</th><th>Naturaleza</th>
-              <th>Medio de Pago</th><th style={{textAlign:'right'}}>Monto</th><th>Notas</th><th>Acciones</th>
-            </tr></thead>
-            <tbody>
-              {filtered.length===0
-                ? <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">💰</div><p>Sin cobros registrados</p></div></td></tr>
-                : filtered.map(c=>(
-                  <tr key={c.id}>
-                    <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,whiteSpace:'nowrap'}}>{fmtDate(c.fecha)}</td>
-                    <td style={{fontWeight:600}}>{c.cliente}</td>
-                    <td style={{fontSize:13,color:'var(--gray)'}}>{c.naturaleza}</td>
-                    <td>
-                      <span className="badge badge-blue" style={{fontSize:10}}>
-                        {MEDIO_LABEL[c.medio]||c.medio}{c.submedio?' · '+c.submedio:''}
+      {/* ── GRUPOS POR MES ── */}
+      {mesGroups.length === 0 ? (
+        <div className="card" style={{padding:'60px 20px',textAlign:'center',color:'var(--gray2)'}}>
+          <div style={{fontSize:40,marginBottom:12}}>💰</div>
+          <div style={{fontSize:14}}>No hay datos para mostrar en esta vista</div>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {mesGroups.map(({key, rows}) => {
+            const isCollapsed   = collapsed.has(key);
+            const isMesActual   = key === mesActualKey;
+            const rowsVisible   = tab==='pendientes' ? rows.filter(r=>!r.cobrado)
+                                : tab==='cobrados'   ? rows.filter(r=>r.cobrado||r.parcial)
+                                : rows;
+            const totalMesHon   = rows.reduce((s,r)=>s+r.honorario,0);
+            const totalMesCob   = rows.reduce((s,r)=>s+r.montoCobrado,0);
+            const pendientesMes = rows.filter(r=>!r.cobrado).length;
+            const cobradosMes   = rows.filter(r=>r.cobrado).length;
+
+            return (
+              <div key={key} className="card" style={{padding:0,overflow:'hidden',
+                border: isMesActual ? '1px solid rgba(201,169,110,0.4)' : '1px solid rgba(201,169,110,0.15)'}}>
+
+                {/* Header del mes */}
+                <div onClick={()=>toggleMes(key)}
+                  style={{
+                    background: isMesActual
+                      ? 'linear-gradient(135deg,var(--black),var(--black2))'
+                      : 'rgba(201,169,110,0.05)',
+                    padding:'13px 20px',
+                    display:'flex',alignItems:'center',gap:12,cursor:'pointer',
+                    borderBottom: isCollapsed ? 'none' : '1px solid rgba(201,169,110,0.15)',
+                  }}>
+                  <div style={{
+                    width:22,height:22,borderRadius:6,flexShrink:0,
+                    background: isMesActual?'rgba(201,169,110,0.2)':'rgba(0,0,0,0.06)',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:11,fontWeight:700,
+                    color:isMesActual?'var(--gold2)':'var(--gray)',
+                    transition:'transform 0.2s',
+                    transform:isCollapsed?'rotate(-90deg)':'rotate(0deg)',
+                  }}>▼</div>
+
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,
+                    color:isMesActual?'var(--gold2)':'var(--black)',flex:1}}>
+                    {mesLabel(key)}
+                    {isMesActual && (
+                      <span style={{marginLeft:10,fontSize:10,fontWeight:600,
+                        fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(201,169,110,0.2)',color:'var(--gold2)',
+                        padding:'2px 8px',borderRadius:99,verticalAlign:'middle'}}>MES ACTUAL</span>
+                    )}
+                  </div>
+
+                  {/* Totales del mes */}
+                  <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                    {pendientesMes > 0 && (
+                      <span style={{fontSize:11,fontWeight:700,fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(201,124,30,0.12)',color:'var(--amber)',
+                        padding:'3px 10px',borderRadius:99}}>
+                        ⏳ {pendientesMes} pendiente{pendientesMes!==1?'s':''}
                       </span>
-                    </td>
-                    <td style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:'var(--green)'}}>{fmt(c.monto)}</td>
-                    <td style={{fontSize:12,color:'var(--gray)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.notas||'—'}</td>
-                    <td><div className="action-btns">
-                      <button className="btn-icon edit" title="Editar" onClick={()=>openEdit(c)}>✏️</button>
-                      <button className="btn-icon trash" title="Eliminar" onClick={()=>handleDelete(c.id)}>🗑️</button>
-                    </div></td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    )}
+                    {cobradosMes > 0 && (
+                      <span style={{fontSize:11,fontWeight:700,fontFamily:'JetBrains Mono,monospace',
+                        background:'rgba(34,197,94,0.12)',color:'#16a34a',
+                        padding:'3px 10px',borderRadius:99}}>
+                        ✓ {fmtShort(totalMesCob)} cobrado
+                      </span>
+                    )}
+                    <span style={{fontSize:11,color:isMesActual?'rgba(250,248,243,0.5)':'var(--gray2)',
+                      fontFamily:'JetBrains Mono,monospace'}}>
+                      {fmtShort(totalMesHon)} total · {rows.length} clientes
+                    </span>
+                  </div>
+                </div>
 
+                {/* Tabla del mes */}
+                {!isCollapsed && (
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                      <thead>
+                        <tr style={{background:'rgba(201,169,110,0.05)',
+                          borderBottom:'1px solid rgba(201,169,110,0.12)'}}>
+                          {['Cliente','Honorario','Cobrado','Medio de Pago','Saldo','Acciones'].map(h=>(
+                            <th key={h} style={{padding:'9px 14px',textAlign:'left',
+                              color:'var(--gray)',fontWeight:700,fontSize:11,
+                              fontFamily:'JetBrains Mono,monospace',
+                              textTransform:'uppercase',letterSpacing:'0.3px',
+                              ...(h==='Saldo'||h==='Honorario'||h==='Cobrado'?{textAlign:'right'}:{})}}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rowsVisible.map(r => {
+                          const rowBg = r.cobrado
+                            ? 'rgba(34,197,94,0.04)'
+                            : r.parcial
+                            ? 'rgba(201,124,30,0.04)'
+                            : 'transparent';
+                          const borderL = r.cobrado
+                            ? '3px solid rgba(34,197,94,0.4)'
+                            : r.parcial
+                            ? '3px solid var(--amber)'
+                            : '3px solid rgba(192,57,43,0.3)';
+
+                          return (
+                            <tr key={r.clienteId}
+                              style={{borderBottom:'1px solid var(--cream2)',
+                                borderLeft:borderL, background:rowBg, transition:'background 0.15s'}}>
+
+                              {/* Cliente */}
+                              <td style={{padding:'11px 14px',fontWeight:600,color:'var(--black)'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                  <div style={{width:28,height:28,borderRadius:7,flexShrink:0,
+                                    background:'linear-gradient(135deg,var(--gold),var(--gold2))',
+                                    display:'flex',alignItems:'center',justifyContent:'center',
+                                    fontSize:11,fontWeight:700,color:'var(--black)'}}>
+                                    {initials(r.clienteNombre)}
+                                  </div>
+                                  {r.clienteNombre}
+                                </div>
+                              </td>
+
+                              {/* Honorario */}
+                              <td style={{padding:'11px 14px',textAlign:'right',
+                                fontFamily:'JetBrains Mono,monospace',fontWeight:600,color:'var(--black)'}}>
+                                {fmt(r.honorario)}
+                              </td>
+
+                              {/* Cobrado */}
+                              <td style={{padding:'11px 14px',textAlign:'right',
+                                fontFamily:'JetBrains Mono,monospace',fontWeight:700,
+                                color:r.montoCobrado>0?'var(--green)':'var(--gray2)'}}>
+                                {r.montoCobrado > 0 ? fmt(r.montoCobrado) : '—'}
+                              </td>
+
+                              {/* Medio de pago */}
+                              <td style={{padding:'11px 14px'}}>
+                                {r.medios.length > 0 ? (
+                                  <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                                    {r.medios.map(m=>(
+                                      <span key={m} style={{fontSize:10,padding:'2px 8px',borderRadius:99,
+                                        background:'rgba(37,99,235,0.1)',color:'var(--blue)',
+                                        fontWeight:600,border:'1px solid rgba(37,99,235,0.15)'}}>
+                                        {m}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{color:'var(--gray2)',fontSize:12}}>—</span>
+                                )}
+                              </td>
+
+                              {/* Saldo */}
+                              <td style={{padding:'11px 14px',textAlign:'right',
+                                fontFamily:'JetBrains Mono,monospace',fontWeight:700,
+                                color:r.saldo>0?'var(--amber)':'var(--green)'}}>
+                                {r.cobrado
+                                  ? <span className="badge badge-green" style={{fontSize:10}}>✓ Al día</span>
+                                  : fmt(r.saldo)
+                                }
+                              </td>
+
+                              {/* Acciones */}
+                              <td style={{padding:'11px 16px 11px 10px'}}>
+                                <div className="action-btns" style={{justifyContent:'flex-end'}}>
+                                  {!r.cobrado && (
+                                    <button onClick={()=>openCobrar(r)}
+                                      style={{display:'inline-flex',alignItems:'center',gap:4,
+                                        padding:'5px 12px',borderRadius:7,border:'none',cursor:'pointer',
+                                        fontFamily:'Montserrat,sans-serif',fontSize:12,fontWeight:700,
+                                        background:'rgba(201,169,110,0.18)',color:'var(--black)',
+                                        transition:'all 0.15s',whiteSpace:'nowrap'}}
+                                      onMouseOver={e=>e.currentTarget.style.background='rgba(201,169,110,0.32)'}
+                                      onMouseOut={e=>e.currentTarget.style.background='rgba(201,169,110,0.18)'}>
+                                      💰 Cobrar
+                                    </button>
+                                  )}
+                                  {r.cobrosData.length > 0 && r.cobrosData.map(cobro => (
+                                    <button key={cobro.id} className="btn-icon edit" title={`Editar cobro ${fmtDate(cobro.fecha)}`}
+                                      onClick={()=>openEditCobro(cobro)}>✏️</button>
+                                  ))}
+                                  {r.cobrosData.length > 0 && r.cobrosData.map(cobro => (
+                                    <button key={cobro.id+'d'} className="btn-icon trash" title="Eliminar cobro"
+                                      onClick={()=>handleDeleteCobro(cobro.id)}>🗑️</button>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {/* Subtotal del mes */}
+                      <tfoot>
+                        <tr style={{background:'rgba(201,169,110,0.06)',
+                          borderTop:'2px solid rgba(201,169,110,0.2)'}}>
+                          <td style={{padding:'9px 14px',fontWeight:700,fontSize:12,
+                            color:'var(--gray)',fontFamily:'JetBrains Mono,monospace',
+                            textTransform:'uppercase',letterSpacing:'0.5px'}}>
+                            Subtotal
+                          </td>
+                          <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'JetBrains Mono,monospace',
+                            fontWeight:700,color:'var(--black)'}}>
+                            {fmt(rowsVisible.reduce((s,r)=>s+r.honorario,0))}
+                          </td>
+                          <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'JetBrains Mono,monospace',
+                            fontWeight:700,color:'var(--green)'}}>
+                            {fmt(rowsVisible.reduce((s,r)=>s+r.montoCobrado,0))}
+                          </td>
+                          <td></td>
+                          <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'JetBrains Mono,monospace',
+                            fontWeight:700,color:'var(--amber)'}}>
+                            {rowsVisible.some(r=>r.saldo>0) ? fmt(rowsVisible.reduce((s,r)=>s+r.saldo,0)) : <span className="badge badge-green" style={{fontSize:10}}>✓</span>}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── MODAL COBRAR ── */}
       {modal && (
-        <Modal title={editItem ? "✏️ Editar Cobro" : "💰 Registrar Cobro"} onClose={()=>{setModal(false);setEditItem(null);}} wide
+        <Modal title={editItem ? '✏️ Editar Cobro' : '💰 Registrar Cobro'}
+          onClose={()=>{setModal(false);setEditItem(null);setCobroCtx(null);}} wide
           footer={<>
-            <button className="btn btn-ghost btn-sm" onClick={()=>{setModal(false);setEditItem(null);}}>Cancelar</button>
-            <button className="btn btn-gold" onClick={handleSave} disabled={saving || !form.clienteId || !form.monto}>
+            <button className="btn btn-ghost btn-sm" onClick={()=>{setModal(false);setEditItem(null);setCobroCtx(null);}}>Cancelar</button>
+            <button className="btn btn-gold" onClick={handleSave} disabled={saving||!form.clienteId||!form.monto}>
               {saving?'⏳ Guardando...':editItem?'✓ Guardar Cambios':'✓ Registrar Cobro'}
             </button>
           </>}>
 
+          {cobroCtx && (
+            <div style={{padding:'10px 14px',background:'rgba(201,169,110,0.1)',borderRadius:'var(--r2)',
+              border:'1px solid rgba(201,169,110,0.25)',fontSize:13,marginBottom:16,
+              display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:20}}>👤</span>
+              <div>
+                <div style={{fontWeight:700,color:'var(--black)'}}>{cobroCtx.clienteNombre}</div>
+                <div style={{fontSize:12,color:'var(--gray)'}}>
+                  Honorario: {fmt(cobroCtx.honorario)} · Saldo pendiente: <strong style={{color:'var(--amber)'}}>{fmt(cobroCtx.saldo)}</strong>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Cliente *</label>
-              <select className="form-select" value={form.clienteId} onChange={e=>setForm(f=>({...f,clienteId:e.target.value,monto:clients.find(c=>c.id===e.target.value)?.saldoPendiente||f.monto}))}>
+              <select className="form-select" value={form.clienteId}
+                onChange={e=>setForm(f=>({...f,clienteId:e.target.value,monto:clients.find(c=>c.id===e.target.value)?.saldoPendiente||f.monto}))}
+                disabled={!!cobroCtx}>
                 <option value="">Seleccionar cliente...</option>
                 {clients.filter(c=>c.estado==='activo'||c.saldoPendiente>0).map(c=>(
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}{c.saldoPendiente>0?' — Debe '+fmtShort(c.saldoPendiente):''}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.nombre}{c.saldoPendiente>0?' — Debe '+fmtShort(c.saldoPendiente):''}</option>
                 ))}
               </select>
-              {selectedClient?.saldoPendiente>0 && (
-                <div style={{fontSize:11,color:'var(--amber)',marginTop:4}}>⚠️ Saldo pendiente: {fmt(selectedClient.saldoPendiente)}</div>
-              )}
             </div>
             <div className="form-group">
               <label className="form-label">Fecha *</label>
@@ -2478,7 +2785,7 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Naturaleza del cobro *</label>
+            <label className="form-label">Naturaleza del cobro</label>
             <select className="form-select" value={form.naturaleza} onChange={e=>setForm(f=>({...f,naturaleza:e.target.value}))}>
               {NATURALEZAS_COBRO.map(n=><option key={n}>{n}</option>)}
             </select>
@@ -2486,7 +2793,8 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
 
           <div className="form-group">
             <label className="form-label">Monto (ARS) *</label>
-            <input className="form-input" type="number" value={form.monto} onChange={e=>setForm(f=>({...f,monto:e.target.value}))} placeholder="195000" />
+            <input className="form-input" type="number" value={form.monto}
+              onChange={e=>setForm(f=>({...f,monto:e.target.value}))} placeholder="195000" />
           </div>
 
           <div className="form-group">
@@ -2494,7 +2802,8 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10}}>
               {MEDIOS_PAGO.map(m=>(
                 <div key={m.id} onClick={()=>setForm(f=>({...f,medio:m.id,submedio:''}))}
-                  style={{padding:'10px 8px',borderRadius:'var(--r2)',cursor:'pointer',textAlign:'center',transition:'all 0.15s',
+                  style={{padding:'10px 8px',borderRadius:'var(--r2)',cursor:'pointer',textAlign:'center',
+                    transition:'all 0.15s',
                     background:form.medio===m.id?'rgba(201,169,110,0.15)':'var(--cream)',
                     border:form.medio===m.id?'2px solid var(--gold)':'2px solid transparent'}}>
                   <div style={{fontSize:22,marginBottom:4}}>{m.icon}</div>
@@ -2512,11 +2821,14 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
 
           <div className="form-group">
             <label className="form-label">Notas / Observaciones</label>
-            <textarea className="form-textarea" style={{minHeight:70}} value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Ref. transferencia, comprobante, aclaraciones..." />
+            <textarea className="form-textarea" style={{minHeight:60}} value={form.notas}
+              onChange={e=>setForm(f=>({...f,notas:e.target.value}))}
+              placeholder="Ref. transferencia, comprobante, aclaraciones..." />
           </div>
 
           {form.clienteId && form.monto && (
-            <div style={{padding:'12px 16px',background:'var(--green2)',borderRadius:'var(--r2)',border:'1px solid var(--green)',fontSize:13,color:'#065f46'}}>
+            <div style={{padding:'12px 16px',background:'var(--green2)',borderRadius:'var(--r2)',
+              border:'1px solid var(--green)',fontSize:13,color:'#065f46'}}>
               ✓ Se registrará un cobro de <strong>{fmt(Number(form.monto))}</strong> para <strong>{selectedClient?.nombre}</strong> por {form.naturaleza}.
               {selectedClient?.saldoPendiente>0 && ` El saldo pendiente quedará en ${fmt(Math.max(0,selectedClient.saldoPendiente-Number(form.monto)))}.`}
             </div>
@@ -2525,6 +2837,11 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
       )}
     </div>
   );
+}
+
+// Facturacion ya no existe como sección separada — todo en Cobros
+function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
+  return <Cobros clients={clients} setClients={()=>{}} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} />;
 }
 
 // ── VENCIMIENTOS — TABLA POR CLIENTE ────────────────
@@ -3408,168 +3725,6 @@ function Finanzas({ cobros, setCobros, facturas, setFacturas }) {
   );
 }
 
-// ── FACTURACIÓN ──────────────────────────────────────
-function Facturacion({ clients, facturas, setFacturas, cobros, setCobros }) {
-  const [modal, setModal]   = useState(null);
-  const [editItem, setEditItem] = useState(null);
-  const [form, setForm]     = useState({});
-  const [filterMes, setFilterMes] = useState('');
-  const now = new Date();
-  const mesActual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const listaFiltrada = filterMes ? facturas.filter(f=>(f.fecha||'').startsWith(filterMes)) : facturas;
-
-  // Totals computed inline in JSX
-
-  const handleSave = async () => {
-    if (!form.cliente || !form.monto) return;
-    const payload = {...form, monto: Number(form.monto), clienteId: clients.find(c=>c.nombre===form.cliente)?.id||''};
-    if (editItem) {
-      try { await FB().updateDoc(FB().doc(FB().db,'facturas',editItem.id), payload); } catch(e){}
-      setFacturas(prev=>prev.map(x=>x.id===editItem.id?{...payload,id:editItem.id}:x));
-    } else {
-      try {
-        const ref = await FB().addDoc(FB().collection(FB().db,'facturas'), {...payload, createdAt:FB().serverTimestamp()});
-        setFacturas(prev => [...prev, {...payload, id: ref.id}]);
-      } catch(e) {
-        setFacturas(prev => [...prev, {...payload, id: 'local-'+Date.now()}]);
-      }
-    }
-    setModal(null); setEditItem(null);
-  };
-
-  const ESTADO_CYCLE = { 'na':'pendiente', 'pendiente':'facturado', 'facturado':'na' };
-  const ESTADO_LABEL = { 'na':'— N/A', 'pendiente':'⏳ Pendiente', 'facturado':'🧾 Facturado' };
-  const ESTADO_BADGE = { 'na':'badge-gray', 'pendiente':'badge-amber', 'facturado':'badge-green' };
-
-  const toggleEstado = async (id) => {
-    const f = facturas.find(x=>x.id===id);
-    const cur = f?.estado||'na';
-    const newEstado = ESTADO_CYCLE[cur]||'pendiente';
-    try { await FB().updateDoc(FB().doc(FB().db,'facturas',id),{estado:newEstado}); } catch(e){}
-    setFacturas(prev => prev.map(f => f.id === id ? {...f, estado: newEstado} : f));
-  };
-
-  const openEditFac = (f) => {
-    setEditItem(f);
-    setForm({ cliente:f.cliente||'', concepto:f.concepto||'', monto:f.monto||'', fecha:f.fecha||todayStr, estado:f.estado||'pendiente' });
-    setModal('new');
-  };
-
-  const handleDeleteFac = async (id) => {
-    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar esta factura/cargo', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
-    if (!result.isConfirmed) return;
-    try { await FB().deleteDoc(FB().doc(FB().db,'facturas',id)); } catch(e){}
-    setFacturas(prev=>prev.filter(x=>x.id!==id));
-  };
-
-  const meses = [...new Set(facturas.map(f=>(f.fecha||'').slice(0,7)))].filter(Boolean).sort().reverse();
-
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Facturación</div>
-          <div className="page-subtitle">Honorarios generados · {filterMes||'Todos los meses'}</div>
-        </div>
-        <button className="btn btn-gold" onClick={() => { setEditItem(null); setForm({ estado: 'na', fecha: todayStr }); setModal('new'); }}>+ Nuevo Cargo</button>
-      </div>
-
-      <div className="stats-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:24}}>
-        <div className="stat-card">
-          <div className="stat-icon">🧾</div>
-          <div className="stat-label">Facturados</div>
-          <div className="stat-value gold">{fmtShort(listaFiltrada.filter(f=>f.estado==='facturado').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">⏳</div>
-          <div className="stat-label">Pendiente de factura</div>
-          <div className="stat-value" style={{color:'var(--amber)'}}>{fmtShort(listaFiltrada.filter(f=>f.estado==='pendiente').reduce((s,f)=>s+Number(f.monto||0),0))}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">📋</div>
-          <div className="stat-label">Total cargos</div>
-          <div className="stat-value">{listaFiltrada.length}</div>
-        </div>
-      </div>
-
-      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
-        <span style={{fontSize:12,color:'var(--gray)',fontWeight:600}}>Mes:</span>
-        <button className={`btn btn-sm ${!filterMes?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes('')}>Todos</button>
-        {meses.slice(0,6).map(m=>(
-          <button key={m} className={`btn btn-sm ${filterMes===m?'btn-primary':'btn-ghost'}`} onClick={()=>setFilterMes(m)}>{m}</button>
-        ))}
-      </div>
-
-      <div className="card" style={{padding:0,overflow:'hidden'}}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr>
-              <th style={{paddingLeft:16}}>Concepto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Estado <span style={{fontSize:10,opacity:0.6}}>(clic para cambiar)</span></th><th>Acciones</th>
-            </tr></thead>
-            <tbody>
-              {[...listaFiltrada].sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).map(f => (
-                <tr key={f.id}>
-                  <td style={{paddingLeft:16,fontWeight:500}}>{f.concepto}</td>
-                  <td style={{fontSize:13}}>{f.cliente}</td>
-                  <td style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700}}>{fmt(f.monto)}</td>
-                  <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13}}>{fmtDate(f.fecha)}</td>
-                  <td>
-                    <span className={`badge ${ESTADO_BADGE[f.estado||'na']}`} style={{cursor:'pointer'}} title="Clic para cambiar estado" onClick={()=>toggleEstado(f.id)}>
-                      {ESTADO_LABEL[f.estado||'na']}
-                    </span>
-                  </td>
-                  <td><div className="action-btns">
-                    <button className="btn-icon edit" title="Editar" onClick={()=>openEditFac(f)}>✏️</button>
-                    <button className="btn-icon trash" title="Eliminar" onClick={()=>handleDeleteFac(f.id)}>🗑️</button>
-                  </div></td>
-                </tr>
-              ))}
-              {listaFiltrada.length===0 && <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--gray2)'}}>Sin comprobantes</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {modal === 'new' && (
-        <Modal title={editItem ? "✏️ Editar Cargo" : "Nueva Factura / Cargo"} onClose={() => setModal(null)}
-          footer={<>
-            <button className="btn btn-ghost btn-sm" onClick={() => {setModal(null);setEditItem(null);}}>Cancelar</button>
-            <button className="btn btn-gold btn-sm" onClick={handleSave}>{editItem?'Guardar Cambios':'Guardar'}</button>
-          </>}>
-          <div className="form-group">
-            <label className="form-label">Cliente</label>
-            <select className="form-select" value={form.cliente||''} onChange={e => setForm(f => ({...f, cliente: e.target.value}))}>
-              <option value="">Seleccionar cliente...</option>
-              {clients.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Concepto</label>
-            <input className="form-input" value={form.concepto||''} onChange={e => setForm(f => ({...f, concepto: e.target.value}))} placeholder="Asesoría Fiscal - Abril 2026" />
-          </div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Monto (ARS)</label>
-              <input className="form-input" type="number" value={form.monto||''} onChange={e => setForm(f => ({...f, monto: e.target.value}))} placeholder="195000" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Fecha</label>
-              <input className="form-input" type="date" value={form.fecha||''} onChange={e => setForm(f => ({...f, fecha: e.target.value}))} />
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Estado</label>
-            <select className="form-select" value={form.estado||'na'} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
-              <option value="na">— N/A</option>
-              <option value="pendiente">⏳ Pendiente de factura</option>
-              <option value="facturado">🧾 Facturado</option>
-            </select>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
 
 // ── TAREAS ───────────────────────────────────────────
 function Tareas({ tareas, setTareas, clients }) {
@@ -4451,8 +4606,7 @@ function App() {
     { id:'dashboard',    label:'Dashboard',    icon:'🏠' },
     { id:'clientes',     label:'Clientes',     icon:'👥' },
     { id:'vencimientos', label:'Vencimientos', icon:'📅', badge:vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)<=7).length||null },
-    { id:'facturacion',  label:'Facturación',  icon:'💰' },
-    { id:'cobros',       label:'Cobros',       icon:'🧾' },
+    { id:'cobros',       label:'Facturación / Cobros', icon:'💰' },
     { id:'finanzas',     label:'Finanzas',     icon:'📊' },
     { id:'tareas',       label:'Tareas',       icon:'✅', badge:tareas.filter(t=>!t.completado).length||null, badgeClass:'amber' },
     { id:'notas',        label:'Notas',        icon:'📝' },
@@ -4511,10 +4665,9 @@ function App() {
         <div {...S('dashboard')}><Dashboard clients={clients} vencimientos={vencimientos} tareas={tareas} notas={notas} setSection={setSection} setTareas={setTareas} /></div>
         <div {...S('clientes')}><Clientes clients={clients} setClients={setClients} vencimientos={vencimientos} setVencimientos={setVencimientos} tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} tareas={tareas} setTareas={setTareas} /></div>
         <div {...S('vencimientos')}><Vencimientos vencimientos={vencimientos} setVencimientos={setVencimientos} clients={clients} tareas={tareas} setTareas={setTareas} /></div>
-        <div {...S('facturacion')}><Facturacion clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
+        <div {...S('cobros')}><Cobros clients={clients} setClients={setClients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
         <div {...S('tareas')}><Tareas tareas={tareas} setTareas={setTareas} clients={clients} /></div>
         <div {...S('notas')}><Notas notas={notas} setNotas={setNotas} clients={clients} /></div>
-        <div {...S('cobros')}><Cobros clients={clients} facturas={facturas} setFacturas={setFacturas} cobros={cobros} setCobros={setCobros} /></div>
         <div {...S('finanzas')}><Finanzas cobros={cobros} setCobros={setCobros} facturas={facturas} setFacturas={setFacturas} /></div>
         <div {...S('catalogo')}><CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} /></div>
       </main>
