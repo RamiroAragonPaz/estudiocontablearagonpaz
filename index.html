@@ -751,6 +751,39 @@
       .grid-2, .grid-6040 { grid-template-columns: 1fr; }
     }
 
+    /* ── iPAD OPTIMIZATIONS (768px–1024px) ─────────── */
+    @media (min-width: 768px) and (max-width: 1024px) {
+      :root { --sidebar: 64px; }
+      .sidebar { width: 64px !important; }
+      .sidebar-brand, .sidebar-brand-sub,
+      .nav-section-label, .nav-label, .nav-badge,
+      .user-info, .btn-logout { display: none !important; }
+      .sidebar-header { padding: 18px 13px; }
+      .nav-item { justify-content: center; padding: 13px 0; }
+      .nav-icon { font-size: 22px !important; }
+      .sidebar-user { justify-content: center; padding: 16px 10px; }
+      .main { margin-left: 64px; padding: 20px 18px; }
+      .page-title { font-size: 24px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid-2, .grid-6040 { grid-template-columns: 1fr; }
+      /* Tabla vencimientos en iPad: columnas clave visibles */
+      .venc-col-prioridad { display: none; }
+      /* Botones más grandes para touch */
+      .btn, .btn-gold, .btn-ghost { padding: 11px 18px; font-size: 14px; min-height: 44px; }
+      .btn-icon { width: 38px; height: 38px; font-size: 16px; }
+      .nav-item { min-height: 48px; }
+      /* Touch-friendly checkboxes */
+      .task-check { width: 22px !important; height: 22px !important; }
+      /* Formularios más espaciados */
+      .form-input, .form-select, .form-textarea { font-size: 16px; padding: 12px 14px; min-height: 44px; }
+    }
+
+    /* ── iPAD PORTRAIT específico ── */
+    @media (min-width: 768px) and (max-width: 834px) {
+      .main { padding: 16px; }
+      .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    }
+
 
 
     /* ── ICON ACTION BUTTONS ───────────────────────── */
@@ -2371,36 +2404,23 @@ function Cobros({ clients, setClients, cobros, setCobros }) {
   );
 }
 
-// ── VENCIMIENTOS (CALENDARIO) ────────────────────────
+// ── VENCIMIENTOS — TABLA POR CLIENTE ────────────────
 function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTareas }) {
   const now = new Date();
-  const [calYear,  setCalYear]  = useState(now.getFullYear());
-  const [calMonth, setCalMonth] = useState(now.getMonth());     // 0-based
-  const [selDate,  setSelDate]  = useState(todayStr);           // 'YYYY-MM-DD'
-  const [modal,    setModal]    = useState(null);
-  const [form,     setForm]     = useState({});
-  const [selVenc,  setSelVenc]  = useState(null);
-  const [showImport, setShowImport]       = useState(false);
-  const [vencDetail, setVencDetail]       = useState(null); // grupo para modal detalle
-  const [debugDay, setDebugDay]           = useState(null); // debug modal
+  const [modal,      setModal]      = useState(null);
+  const [form,       setForm]       = useState({});
+  const [selVenc,    setSelVenc]    = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [filterEstado, setFilterEstado] = useState('pendientes'); // 'pendientes' | 'todos' | 'vencidos'
+  const [filterCliente, setFilterCliente] = useState('');
+  const [sortCol, setSortCol] = useState('dias');
+  const [sortDir, setSortDir] = useState('asc');
 
-  // helpers
+  // ── helpers ─────────────────────────────────────────
   const daysInMonth = (y,m) => new Date(y, m+1, 0).getDate();
-  const firstDow    = (y,m) => new Date(y, m, 1).getDay(); // 0=Sun
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 
-  // ── Match vencimiento → clientes que tienen ese tributo ─────
-  // ═══════════════════════════════════════════════════════════
-  // MATCHING: vencimiento → clientes afectados
-  //
-  // Regla única y simple:
-  //   1. Detectar qué tributo corresponde al nombre del vencimiento
-  //   2. Si tiene rango CUIT en el nombre → filtrar por penúltimo dígito del CUIT
-  //   3. El cliente DEBE tener ese tributo id en su array tributos[]
-  //   4. Nunca inferir — si no está en tributos[], no aplica
-  // ═══════════════════════════════════════════════════════════
-
-  // Mapeo nombre del vencimiento → id del tributo en el catálogo
+  // TRIBUTO_KEYWORDS — mismo mapa que antes
   const TRIBUTO_KEYWORDS = [
     { id: 'recat_mono',  words: ['recategori'] },
     { id: 'monotributo', words: ['monotributo'] },
@@ -2417,7 +2437,6 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
     { id: 'automotores', words: ['automotor', 'patente'] },
     { id: 'sueldos',     words: ['sueldo', 'remuneracion', 'remuneración'] },
   ];
-
   const getTributoId = (nombre) => {
     const n = (nombre || '').toLowerCase();
     for (const entry of TRIBUTO_KEYWORDS) {
@@ -2426,203 +2445,168 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
     }
     return null;
   };
-
-  // Extrae el rango de terminación CUIT del nombre del vencimiento
-  // "CUIT term. 0-3" → [0,1,2,3]   |   sin rango → null
   const getCuitRange = (nombre) => {
     const m = (nombre || '').match(/CUIT[^0-9]*term[^0-9]*(\d)\s*[-–y]\s*(\d)/i);
     if (!m) return null;
     const from = parseInt(m[1]), to = parseInt(m[2]);
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   };
-
-  // Penúltimo dígito del CUIT (el que usa AFIP para escalonar vencimientos)
-  // CUIT 20-12345678-9 → sin guiones: 20123456789 → penúltimo: 8
   const getCuitDigit = (cuit) => {
     const limpio = (cuit || '').replace(/[-\s]/g, '');
     if (limpio.length < 2) return NaN;
     return parseInt(limpio[limpio.length - 2]);
   };
 
-  // Retorna los clientes que aplican a un vencimiento individual
+  // Dado un vencimiento, devuelve los clientes que aplican
   const getClientesDelVenc = (v) => {
     const tributeId = getTributoId(v.nombre);
     if (!tributeId) return { matched: [], fallbackText: v.clientes || null };
-
     const cuitRange = getCuitRange(v.nombre);
-
     const matched = clients.filter(c => {
       if (c.estado === 'inactivo') return false;
-      // Tributo explícito requerido
       const tiene = Array.isArray(c.tributos) && c.tributos.some(t => t.id === tributeId);
-
       if (!tiene) return false;
-      // Con rango CUIT: validar penúltimo dígito
       if (cuitRange) {
         const d = getCuitDigit(c.cuit);
-
         return !isNaN(d) && cuitRange.includes(d);
       }
       return true;
     });
-
-    return {
-      matched,
-      fallbackText: matched.length === 0 ? (v.clientes || null) : null
-    };
+    return { matched, fallbackText: matched.length === 0 ? (v.clientes || null) : null };
   };
 
-  // Para un GRUPO (varios vencimientos con mismo nombre base):
-  // llama getClientesDelVenc por cada item y deduplica
-  const getClientesDelGrupo = (grupo) => {
-    const map = new Map();
-    let fallback = null;
-    grupo.items.forEach(v => {
+  // ── Construir filas: una fila por (cliente × vencimiento) ──
+  const buildRows = () => {
+    const rows = [];
+    vencimientos.forEach(v => {
+      const days = daysUntil(v.fecha);
       const { matched, fallbackText } = getClientesDelVenc(v);
-      matched.forEach(c => map.set(c.id, c));
-      if (fallbackText && !fallback) fallback = fallbackText;
-    });
-    const matched = [...map.values()];
-    return { matched, fallbackText: matched.length === 0 ? fallback : null };
-  };
 
-
-
-  const prevMonth = () => {
-    if (calMonth === 0) { setCalYear(y=>y-1); setCalMonth(11); }
-    else setCalMonth(m=>m-1);
-  };
-  const nextMonth = () => {
-    if (calMonth === 11) { setCalYear(y=>y+1); setCalMonth(0); }
-    else setCalMonth(m=>m+1);
-  };
-
-  // group vencimientos by date string
-  const byDate = {};
-  vencimientos.forEach(v => {
-    if (!byDate[v.fecha]) byDate[v.fecha] = [];
-    byDate[v.fecha].push(v);
-  });
-  // Instancias de tareas recurrentes → aparecen en el calendario
-  (tareas||[]).filter(t => t.recurrenteId && t.fecha && !t.recurrente).forEach(t => {
-    if (!byDate[t.fecha]) byDate[t.fecha] = [];
-    byDate[t.fecha].push({ id:t.id, nombre:'🔁 '+t.texto, tipo:'tarea',
-      fecha:t.fecha, clientes:t.cliente||'', clienteId:t.clienteId||'',
-      completado:t.completado, esTareaRecurrente:true });
-  });
-
-  // vencimientos for selected day
-  const dayVenc = (byDate[selDate] || []).sort((a,b)=>a.completado-b.completado);
-
-  const toggle = async (id) => {
-    const esTarea = (tareas||[]).find(x => x.id===id && x.recurrenteId);
-    if (esTarea) {
-      try { await FB().updateDoc(FB().doc(FB().db,'tareas',id),{completado:!esTarea.completado}); } catch(e){}
-      setTareas(prev => prev.map(x => x.id===id ? {...x,completado:!x.completado} : x));
-      return;
-    }
-    const v = vencimientos.find(x=>x.id===id);
-    if (!v) return;
-    try { await FB().updateDoc(FB().doc(FB().db,'vencimientos',id),{completado:!v.completado}); } catch(e) {}
-    setVencimientos(prev=>prev.map(x=>x.id===id?{...x,completado:!x.completado}:x));
-  };
-
-  // Marcar completado/pendiente un grupo entero de vencimientos
-  const toggleGroup = async (ids, nuevoEstado) => {
-    const fb = FB();
-    await Promise.all(ids.map(id =>
-      fb.updateDoc(fb.doc(fb.db,'vencimientos',id),{completado:nuevoEstado}).catch(()=>{})
-    ));
-    setVencimientos(prev=>prev.map(x=>ids.includes(x.id)?{...x,completado:nuevoEstado}:x));
-  };
-
-  // Agrupar vencimientos de un día en tarjetas únicas por "nombre base"
-  // Ej: "IVA Enero 2026 — CUIT term. 0-1" y "IVA Enero 2026 — CUIT term. 2-3"
-  //     → grupo "IVA Enero 2026" con todos sus docs
-  const groupVenc = (vencList) => {
-    const grupos = {};
-    vencList.forEach(v => {
-      // Nombre base: quitar sufijo " — CUIT term. X-X" o similar
-      const base = v.nombre
-        .replace(/\s*[—–-]+\s*CUIT\s+term[^$]*/i, '')
-        .replace(/\s*[—–-]+\s*CUIT\s+terminaci[^$]*/i, '')
-        .trim();
-      // Agrupar por base + fecha para no mezclar días distintos
-      const key = base + '||' + v.fecha;
-      if (!grupos[key]) {
-        grupos[key] = { base, items: [], tipo: v.tipo, prioridad: v.prioridad, fecha: v.fecha };
+      if (matched.length > 0) {
+        // Una fila por cliente
+        matched.forEach(c => {
+          rows.push({
+            id: v.id + '-' + c.id,
+            vencId: v.id,
+            clienteNombre: c.nombre,
+            clienteId: c.id,
+            tributo: v.nombre,
+            fecha: v.fecha,
+            dias: days,
+            completado: v.completado,
+            prioridad: v.prioridad || 'media',
+            tipo: v.tipo || 'fiscal',
+            notas: v.notas || '',
+          });
+        });
+      } else {
+        // Sin cliente asociado → mostrar con fallback
+        rows.push({
+          id: v.id + '-general',
+          vencId: v.id,
+          clienteNombre: fallbackText || '— General —',
+          clienteId: null,
+          tributo: v.nombre,
+          fecha: v.fecha,
+          dias: days,
+          completado: v.completado,
+          prioridad: v.prioridad || 'media',
+          tipo: v.tipo || 'fiscal',
+          notas: v.notas || '',
+        });
       }
-      grupos[key].items.push(v);
     });
-    // Ordenar: por fecha, luego pendientes primero, luego nombre
-    return Object.values(grupos).sort((a,b) => {
-      const fechaDiff = new Date(a.fecha) - new Date(b.fecha);
-      if (fechaDiff !== 0) return fechaDiff;
-      const aPend = a.items.some(x=>!x.completado);
-      const bPend = b.items.some(x=>!x.completado);
-      if (aPend !== bPend) return aPend ? -1 : 1;
-      return a.base.localeCompare(b.base);
-    });
+    return rows;
   };
 
-  // Compute date for Nth weekday in a month
-  // weekN: 1..4 or -1 (last), dowTarget: 0=Sun..6=Sat
-  const nthWeekday = (year, month, weekN, dowTarget) => {
-    if (weekN === -1) {
-      // Last occurrence
-      let d = new Date(year, month+1, 0); // last day of month
-      while (d.getDay() !== dowTarget) d.setDate(d.getDate()-1);
-      return d;
+  // ── Filtros ──────────────────────────────────────────
+  const allRows = buildRows();
+
+  const filteredRows = allRows.filter(r => {
+    if (filterEstado === 'pendientes' && r.completado) return false;
+    if (filterEstado === 'vencidos'   && (r.completado || r.dias >= 0)) return false;
+    if (filterCliente && !r.clienteNombre.toLowerCase().includes(filterCliente.toLowerCase())) return false;
+    return true;
+  });
+
+  // ── Ordenamiento ─────────────────────────────────────
+  const sorted = [...filteredRows].sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === 'clienteNombre' || sortCol === 'tributo') {
+      va = (va||'').toLowerCase(); vb = (vb||'').toLowerCase();
+      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     }
-    let d = new Date(year, month, 1);
-    let count = 0;
-    while (true) {
-      if (d.getDay() === dowTarget) { count++; if (count === weekN) return d; }
-      d.setDate(d.getDate()+1);
-      if (d.getMonth() !== month) return null;
-    }
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
   };
 
-  // Generate recurring dates based on form periodicidad
+  // ── Color por urgencia ───────────────────────────────
+  const rowColor = (r) => {
+    if (r.completado)  return { bg: 'rgba(34,197,94,0.06)',  border: '3px solid rgba(34,197,94,0.35)',  badge: '#22c55e', badgeTxt: '#fff',     label: '✓ Listo' };
+    if (r.dias < 0)    return { bg: 'rgba(192,57,43,0.08)',  border: '3px solid var(--red)',             badge: 'var(--red)', badgeTxt: '#fff',   label: `Vencido ${Math.abs(r.dias)}d` };
+    if (r.dias === 0)  return { bg: 'rgba(201,169,110,0.15)',border: '3px solid var(--gold)',            badge: 'var(--gold)', badgeTxt: '#111',  label: 'HOY' };
+    if (r.dias <= 3)   return { bg: 'rgba(239,68,68,0.06)',  border: '3px solid rgba(239,68,68,0.6)',   badge: 'var(--red)', badgeTxt: '#fff',   label: `${r.dias}d` };
+    if (r.dias <= 7)   return { bg: 'rgba(201,124,30,0.07)', border: '3px solid var(--amber)',          badge: 'var(--amber)', badgeTxt: '#fff', label: `${r.dias}d` };
+    if (r.dias <= 15)  return { bg: 'rgba(201,169,110,0.05)',border: '3px solid rgba(201,169,110,0.4)', badge: 'var(--gold2)', badgeTxt: '#111', label: `${r.dias}d` };
+    return               { bg: 'transparent',                border: '3px solid transparent',          badge: 'var(--cream2)', badgeTxt: 'var(--gray)', label: `${r.dias}d` };
+  };
+
+  // ── Estadísticas rápidas ─────────────────────────────
+  const stats = {
+    vencidos:  allRows.filter(r => !r.completado && r.dias < 0).length,
+    hoy:       allRows.filter(r => !r.completado && r.dias === 0).length,
+    urgentes:  allRows.filter(r => !r.completado && r.dias > 0 && r.dias <= 3).length,
+    semana:    allRows.filter(r => !r.completado && r.dias > 0 && r.dias <= 7).length,
+    pendientes:allRows.filter(r => !r.completado).length,
+  };
+
+  // ── Toggle completado ────────────────────────────────
+  const toggle = async (vencId) => {
+    const v = vencimientos.find(x => x.id === vencId);
+    if (!v) return;
+    try { await FB().updateDoc(FB().doc(FB().db,'vencimientos',vencId),{completado:!v.completado}); } catch(e) {}
+    setVencimientos(prev => prev.map(x => x.id === vencId ? {...x, completado: !x.completado} : x));
+  };
+
+  const handleDelete = async (vencId) => {
+    const result = await Swal.fire({
+      title: '¿Eliminar vencimiento?', icon: 'warning',
+      showCancelButton: true, confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar',
+      customClass: {popup:'swal-ap'}, reverseButtons: true
+    });
+    if (!result.isConfirmed) return;
+    try { await FB().deleteDoc(FB().doc(FB().db,'vencimientos',vencId)); } catch(e) {}
+    setVencimientos(prev => prev.filter(x => x.id !== vencId));
+  };
+
+  const openNew  = () => { setSelVenc(null); setForm({tipo:'fiscal',prioridad:'media'}); setModal('form'); };
+  const openEdit = (v) => { setSelVenc(v); setForm({...v}); setModal('form'); };
+
   const buildFechas = (f) => {
     const per = f.periodicidad || 'puntual';
-    const now = new Date();
-    const dates = [];
-    if (per === 'puntual' || per === 'anual') {
+    const now2 = new Date();
+    if (per === 'puntual') return f.fecha ? [f.fecha] : [];
+    if (per === 'anual') {
       if (!f.fecha) return [];
-      if (per === 'puntual') return [f.fecha];
-      // anual: generate next 5 years
       const base = new Date(f.fecha + 'T12:00:00');
-      for (let i = 0; i < 5; i++) {
-        const d = new Date(base);
-        d.setFullYear(base.getFullYear() + i);
-        dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
-      }
-      return dates;
+      return Array.from({length:5},(_,i) => {
+        const d = new Date(base); d.setFullYear(base.getFullYear()+i);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      });
     }
     const dia = parseInt(f.diaMes) || 20;
     const step = per==='bimestral'?2 : per==='trimestral'?3 : 1;
-    const months = per==='anual'?1 : per==='trimestral'?4 : per==='bimestral'?6 : 12;
+    const months = per==='trimestral'?4 : per==='bimestral'?6 : 12;
+    const dates = [];
     for (let i = 0; i < months; i += step) {
-      const yr  = now.getMonth()+i > 11 ? now.getFullYear()+Math.floor((now.getMonth()+i)/12) : now.getFullYear();
-      const mon = (now.getMonth()+i)%12;
+      const yr  = now2.getMonth()+i > 11 ? now2.getFullYear()+Math.floor((now2.getMonth()+i)/12) : now2.getFullYear();
+      const mon = (now2.getMonth()+i)%12;
       const maxD = new Date(yr, mon+1, 0).getDate();
-      const d = Math.min(dia, maxD);
-      dates.push(`${yr}-${String(mon+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
-    }
-    return dates;
-    if (per === 'mensual-n') {
-      const semana = parseInt(f.semana)||4;
-      const dow = parseInt(f.diaSemana)||4;
-      for (let i = 0; i < 12; i++) {
-        const yr  = now.getMonth()+i > 11 ? now.getFullYear()+Math.floor((now.getMonth()+i)/12) : now.getFullYear();
-        const mon = (now.getMonth()+i)%12;
-        const target = nthWeekday(yr, mon, semana, dow);
-        if (target) {
-          dates.push(`${target.getFullYear()}-${String(target.getMonth()+1).padStart(2,'0')}-${String(target.getDate()).padStart(2,'0')}`);
-        }
-      }
-      return dates;
+      dates.push(`${yr}-${String(mon+1).padStart(2,'0')}-${String(Math.min(dia,maxD)).padStart(2,'0')}`);
     }
     return dates;
   };
@@ -2630,539 +2614,253 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
   const handleSave = async () => {
     if (!form.nombre) return;
     const per = form.periodicidad || 'puntual';
-    // Validation
     if ((per==='puntual'||per==='anual') && !form.fecha) return;
     if ((per==='mensual'||per==='bimestral'||per==='trimestral') && !form.diaMes) return;
 
     if (selVenc) {
-      // Simple update of single record
       const payload = {...form, completado: selVenc.completado};
-      try {
-        await FB().updateDoc(FB().doc(FB().db,'vencimientos',selVenc.id), payload);
-        setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...payload,id:selVenc.id}:x));
-      } catch(e) {
-        setVencimientos(prev=>prev.map(x=>x.id===selVenc.id?{...payload,id:selVenc.id}:x));
-      }
+      try { await FB().updateDoc(FB().doc(FB().db,'vencimientos',selVenc.id), payload); } catch(e) {}
+      setVencimientos(prev => prev.map(x => x.id===selVenc.id ? {...payload,id:selVenc.id} : x));
     } else {
-      // Build all dates based on periodicidad
-      let fechas;
-      if (per === 'mensual-n') {
-        const semana = parseInt(form.semana)||4;
-        const dow = parseInt(form.diaSemana)||4;
-        fechas = [];
-        const now2 = new Date();
-        for (let i = 0; i < 12; i++) {
-          const yr  = now2.getMonth()+i > 11 ? now2.getFullYear()+Math.floor((now2.getMonth()+i)/12) : now2.getFullYear();
-          const mon = (now2.getMonth()+i)%12;
-          const target = nthWeekday(yr, mon, semana, dow);
-          if (target) {
-            fechas.push(`${target.getFullYear()}-${String(target.getMonth()+1).padStart(2,'0')}-${String(target.getDate()).padStart(2,'0')}`);
-          }
-        }
-      } else {
-        fechas = buildFechas(form);
-      }
+      const fechas = buildFechas(form);
       if (!fechas.length) return;
       const base = { nombre:form.nombre, tipo:form.tipo||'fiscal', clientes:form.clientes||'',
-        prioridad:form.prioridad||'media', completado:false, periodicidad:per,
-        notas:form.notas||'' };
+        prioridad:form.prioridad||'media', completado:false, periodicidad:per, notas:form.notas||'' };
       const newVenc = [];
       for (const fecha of fechas) {
         const v = {...base, fecha};
         try {
           const ref = await FB().addDoc(FB().collection(FB().db,'vencimientos'),{...v,createdAt:FB().serverTimestamp()});
-          newVenc.push({...v,id:ref.id});
-        } catch(e) {
-          newVenc.push({...v,id:'local-'+Date.now()+Math.random()});
-        }
+          newVenc.push({...v, id:ref.id});
+        } catch(e) { newVenc.push({...v, id:'local-'+Date.now()+Math.random()}); }
       }
-      setVencimientos(prev=>[...prev,...newVenc]);
+      setVencimientos(prev => [...prev, ...newVenc]);
     }
     setModal(null); setSelVenc(null);
   };
 
-  const handleDelete = async (id) => {
-    const result = await Swal.fire({ title:'¿Confirmar eliminación?', text:'Eliminar este vencimiento', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, eliminar', cancelButtonText:'Cancelar', customClass:{popup:'swal-ap',confirmButton:'swal2-confirm',cancelButton:'swal2-cancel'}, reverseButtons:true });
-    if (!result.isConfirmed) return;
-    try { await FB().deleteDoc(FB().doc(FB().db,'vencimientos',id)); } catch(e) {}
-    setVencimientos(prev=>prev.filter(x=>x.id!==id));
-  };
+  const SortIcon = ({col}) => sortCol===col
+    ? <span style={{marginLeft:4,color:'var(--gold)',fontSize:10}}>{sortDir==='asc'?'▲':'▼'}</span>
+    : <span style={{marginLeft:4,color:'var(--cream2)',fontSize:10}}>⇅</span>;
 
-  const openNew = () => {
-    setSelVenc(null);
-    setForm({tipo:'fiscal',prioridad:'media',fecha:selDate});
-    setModal('form');
-  };
-  const openEdit = (v) => {
-    setSelVenc(v);
-    setForm({...v});
-    setModal('form');
-  };
-
-  // dot color for a date
-  const dotColor = (dateStr) => {
-    const vs = byDate[dateStr]||[];
-    if (!vs.length) return null;
-    const pending = vs.filter(v=>!v.completado);
-    if (!pending.length) return 'var(--green)';
-    const hasUrgent = pending.some(v=>daysUntil(dateStr)<=7);
-    return hasUrgent ? 'var(--red)' : 'var(--gold)';
-  };
-
-  const days = daysInMonth(calYear, calMonth);
-  const firstDay = firstDow(calYear, calMonth);  // 0=Sun
-  // adjust to Mon-start: 0=Mon…6=Sun
-  const startOffset = (firstDay + 6) % 7;
-  const DOW_LABELS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const pendientesMuyUrgentes = allRows.filter(r => !r.completado && r.dias >= 0 && r.dias <= 7);
 
   return (
     <div>
+      {/* ── HEADER ── */}
       <div className="page-header">
         <div>
-          <div className="page-title">Agenda de Vencimientos</div>
-          <div className="page-subtitle">Calendario fiscal · {MONTHS_FULL[calMonth]} {calYear}</div>
+          <div className="page-title">Vencimientos</div>
+          <div className="page-subtitle">{stats.pendientes} pendiente{stats.pendientes!==1?'s':''} · {allRows.length} total</div>
         </div>
         <div style={{display:'flex',gap:10}}>
           <button className="btn btn-ghost btn-sm" onClick={()=>exportToExcel(
-            vencimientos.map(v=>({'Descripción':v.nombre,'Fecha':v.fecha,'Tipo':v.tipo||'','Cliente':v.clientes||'','Prioridad':v.prioridad||'','Estado':v.completado?'Completado':'Pendiente'})),
+            sorted.map(r=>({'Cliente':r.clienteNombre,'Tributo':r.tributo,'Días':r.dias,'Fecha':r.fecha,'Estado':r.completado?'Completado':'Pendiente','Prioridad':r.prioridad})),
             'Vencimientos'
           )}>📥 Excel</button>
           <button className="btn btn-ghost btn-sm" onClick={()=>setShowImport(true)}>📋 Importar</button>
-          <button className="btn btn-gold" onClick={openNew}>+ Nuevo Vencimiento</button>
+          <button className="btn btn-gold" onClick={openNew}>+ Nuevo</button>
         </div>
       </div>
 
-      {/* ── PANEL UNIFICADO: Agenda próximos 30 días ── */}
-      {(() => {
-        const hoy = new Date();
-        // Combinar vencimientos fiscales + tareas normales (con fecha) + instancias recurrentes
-        const todasTareas = (tareas||[]).filter(t => !t.recurrente && t.fecha && !t.completado);
-        const todoVenc    = vencimientos.filter(v => !v.completado);
-        const items = [
-          ...todoVenc.map(v => ({ ...v, _tipo: 'fiscal' })),
-          ...todasTareas.map(t => ({ ...t, nombre: t.texto, clientes: t.cliente||'', _tipo: t.recurrenteId ? 'recurrente' : 'tarea' })),
-        ]
-        .filter(x => {
-          const d = daysUntil(x.fecha);
-          return d >= -1 && d <= 30;
-        })
-        .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+      {/* ── STATS RÁPIDAS ── */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,marginBottom:20}}>
+        {[
+          {label:'Vencidos',   val:stats.vencidos,   color:'var(--red)',   bg:'var(--red2)',   icon:'🔴'},
+          {label:'Hoy',        val:stats.hoy,         color:'var(--gold)',  bg:'var(--amber2)', icon:'🟡'},
+          {label:'≤ 3 días',   val:stats.urgentes,   color:'var(--red)',   bg:'var(--red2)',   icon:'⚠️'},
+          {label:'Esta semana',val:stats.semana,      color:'var(--amber)', bg:'var(--amber2)', icon:'📅'},
+          {label:'Pendientes', val:stats.pendientes,  color:'var(--black)', bg:'var(--cream2)', icon:'📋'},
+        ].map(s => (
+          <div key={s.label} className="card" style={{padding:'14px 16px',textAlign:'center',cursor:'pointer',border:`1px solid ${s.color}25`}}
+            onClick={()=>setFilterEstado(s.label==='Pendientes'?'pendientes':s.label==='Vencidos'?'vencidos':'pendientes')}>
+            <div style={{fontSize:22,marginBottom:4}}>{s.icon}</div>
+            <div style={{fontFamily:'Playfair Display,serif',fontSize:24,fontWeight:700,color:s.color,lineHeight:1}}>{s.val}</div>
+            <div style={{fontSize:11,color:'var(--gray)',marginTop:4,fontWeight:500}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
 
-        if (!items.length) return null;
-
-        // Group by date
-        const porFecha = {};
-        items.forEach(x => {
-          if (!porFecha[x.fecha]) porFecha[x.fecha] = [];
-          porFecha[x.fecha].push(x);
-        });
-        const fechas = Object.keys(porFecha).sort();
-
-        return (
-          <div className="card" style={{marginBottom:20,padding:0,overflow:'hidden'}}>
-            {/* Header */}
-            <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',padding:'14px 20px',
-              display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontFamily:'Playfair Display,serif',fontSize:16,fontWeight:700,color:'var(--gold2)'}}>
-                  📋 Agenda — Próximos 30 días
-                </div>
-                <div style={{fontSize:11,color:'rgba(250,248,243,0.5)',marginTop:2}}>
-                  {items.length} item{items.length!==1?'s':''} pendiente{items.length!==1?'s':''}
-                  · {items.filter(x=>x._tipo==='fiscal').length} fiscal{items.filter(x=>x._tipo==='fiscal').length!==1?'es':''}
-                  · {items.filter(x=>x._tipo!=='fiscal').length} tarea{items.filter(x=>x._tipo!=='fiscal').length!==1?'s':''}
-                </div>
-              </div>
-              {/* Leyenda */}
-              <div style={{display:'flex',gap:12,fontSize:10,color:'rgba(250,248,243,0.6)'}}>
-                <span style={{display:'flex',alignItems:'center',gap:4}}>
-                  <span style={{width:10,height:10,borderRadius:2,background:'var(--gold)',display:'inline-block'}}/>Fiscal
-                </span>
-                <span style={{display:'flex',alignItems:'center',gap:4}}>
-                  <span style={{width:10,height:10,borderRadius:2,background:'#60a5fa',display:'inline-block'}}/>Tarea
-                </span>
-                <span style={{display:'flex',alignItems:'center',gap:4}}>
-                  <span style={{width:10,height:10,borderRadius:2,background:'#a78bfa',display:'inline-block'}}/>Recurrente
-                </span>
-              </div>
+      {/* ── ALERTA URGENTE ── */}
+      {pendientesMuyUrgentes.length > 0 && (
+        <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',borderRadius:'var(--r)',
+          padding:'14px 20px',marginBottom:20,display:'flex',alignItems:'center',gap:14,
+          border:'1px solid rgba(239,68,68,0.4)'}}>
+          <div style={{fontSize:24,flexShrink:0}}>🚨</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,color:'var(--red)',fontSize:14}}>
+              {pendientesMuyUrgentes.length} vencimiento{pendientesMuyUrgentes.length!==1?'s':''} en los próximos 7 días
             </div>
-
-            {/* Rows */}
-            <div style={{maxHeight:320,overflowY:'auto'}}>
-              {fechas.map(fecha => {
-                const group = porFecha[fecha];
-                const days  = daysUntil(fecha);
-                const d     = new Date(fecha+'T12:00:00');
-                const isToday   = days === 0;
-                const isOverdue = days < 0;
-                const isUrgent  = days > 0 && days <= 3;
-                const isSoon    = days > 3 && days <= 7;
-
-                const rowBg = isOverdue ? 'rgba(239,68,68,0.06)'
-                            : isToday   ? 'rgba(201,169,110,0.12)'
-                            : isUrgent  ? 'rgba(239,68,68,0.04)'
-                            : 'transparent';
-                const borderL = isOverdue ? '3px solid var(--red)'
-                              : isToday   ? '3px solid var(--gold)'
-                              : isUrgent  ? '3px solid rgba(239,68,68,0.4)'
-                              : isSoon    ? '3px solid var(--amber)'
-                              : '3px solid transparent';
-
-                const labelDias = isOverdue ? `Vencido hace ${Math.abs(days)}d`
-                                : isToday   ? 'HOY'
-                                : `${days}d`;
-                const labelColor = isOverdue ? 'var(--red)'
-                                 : isToday   ? 'var(--gold)'
-                                 : isUrgent  ? 'var(--red)'
-                                 : isSoon    ? 'var(--amber)'
-                                 : 'var(--gray)';
-
-                return (
-                  <div key={fecha} style={{borderLeft:borderL,background:rowBg,
-                    padding:'10px 18px',borderBottom:'1px solid var(--cream2)',
-                    display:'flex',gap:14,alignItems:'flex-start'}}>
-
-                    {/* Fecha box */}
-                    <div style={{flexShrink:0,textAlign:'center',minWidth:44}}>
-                      <div style={{fontFamily:'Playfair Display,serif',fontSize:22,fontWeight:700,
-                        color: isOverdue?'var(--red)': isToday?'var(--gold)':'var(--black)',lineHeight:1}}>
-                        {d.getDate()}
-                      </div>
-                      <div style={{fontSize:10,fontWeight:600,color:'var(--gray)',textTransform:'uppercase',letterSpacing:'0.5px'}}>
-                        {MONTHS_ES[d.getMonth()]}
-                      </div>
-                      <div style={{fontSize:10,fontWeight:700,color:labelColor,marginTop:3,
-                        fontFamily:'JetBrains Mono,monospace'}}>
-                        {labelDias}
-                      </div>
-                    </div>
-
-                    {/* Items del día */}
-                    <div style={{flex:1,display:'flex',flexDirection:'column',gap:5}}>
-                      {group.map((x,i) => {
-                        const isFiscal     = x._tipo === 'fiscal';
-                        const isRecurrente = x._tipo === 'recurrente';
-                        const accentColor  = isFiscal ? 'var(--gold)' : isRecurrente ? '#a78bfa' : '#60a5fa';
-                        const bgColor      = isFiscal ? 'rgba(201,169,110,0.08)' : isRecurrente ? 'rgba(167,139,250,0.08)' : 'rgba(96,165,250,0.08)';
-                        const icon         = isFiscal ? '🏛️' : isRecurrente ? '🔁' : '✅';
-
-                        return (
-                          <div key={x.id+i} style={{display:'flex',alignItems:'center',gap:8,
-                            padding:'5px 10px',borderRadius:6,background:bgColor,
-                            border:`1px solid ${accentColor}30`}}>
-                            <span style={{fontSize:12,flexShrink:0}}>{icon}</span>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:12,fontWeight:600,color:'var(--black)',
-                                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                                {x.nombre}
-                              </div>
-                              {x.clientes && (
-                                <div style={{fontSize:10,color:'var(--gray)',marginTop:1}}>
-                                  {x.clientes}
-                                </div>
-                              )}
-                            </div>
-                            <span style={{flexShrink:0,fontSize:9,fontWeight:700,
-                              padding:'2px 6px',borderRadius:4,
-                              background: accentColor, color: isFiscal?'var(--black)':'white'}}>
-                              {isFiscal ? 'FISCAL' : isRecurrente ? 'RECURRENTE' : 'TAREA'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+            <div style={{fontSize:12,color:'rgba(250,248,243,0.6)',marginTop:3}}>
+              {pendientesMuyUrgentes.slice(0,4).map(r=>`${r.clienteNombre} · ${r.tributo} (${r.dias===0?'HOY':r.dias<0?'VENCIDO':r.dias+'d'})`).join('  |  ')}
+              {pendientesMuyUrgentes.length > 4 && ` y ${pendientesMuyUrgentes.length-4} más`}
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
+      {/* ── FILTROS ── */}
+      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10}}>
+          {[
+            {v:'pendientes', l:'Pendientes'},
+            {v:'vencidos',   l:'Vencidos'},
+            {v:'todos',      l:'Todos'},
+          ].map(opt => (
+            <button key={opt.v}
+              style={{padding:'7px 14px',borderRadius:7,border:'none',cursor:'pointer',
+                fontFamily:'Montserrat,sans-serif',fontSize:13,fontWeight:600,transition:'all 0.15s',
+                background: filterEstado===opt.v ? 'var(--white)' : 'transparent',
+                color: filterEstado===opt.v ? 'var(--black)' : 'var(--gray)',
+                boxShadow: filterEstado===opt.v ? '0 2px 8px rgba(17,17,16,0.08)' : 'none'}}
+              onClick={()=>setFilterEstado(opt.v)}>{opt.l}</button>
+          ))}
+        </div>
+        <div className="search-wrap" style={{flex:1,maxWidth:280}}>
+          <span className="search-icon">🔍</span>
+          <input className="search-input" placeholder="Buscar cliente..."
+            value={filterCliente} onChange={e=>setFilterCliente(e.target.value)} />
+        </div>
+        <div style={{marginLeft:'auto',fontSize:12,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>
+          {sorted.length} fila{sorted.length!==1?'s':''}
+        </div>
+      </div>
 
-        {/* ── CALENDAR ── */}
-        <div style={{flex:1,minWidth:0}}>
-          <div className="card" style={{padding:20}}>
-            {/* Month nav */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
-              <button className="btn btn-ghost btn-sm" onClick={prevMonth}>‹ Ant</button>
-              <div style={{fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:'var(--black)'}}>
-                {MONTHS_FULL[calMonth]} {calYear}
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={nextMonth}>Sig ›</button>
-            </div>
-
-            {/* DOW headers */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:8}}>
-              {DOW_LABELS.map(d=>(
-                <div key={d} style={{textAlign:'center',fontSize:11,fontWeight:700,color:'var(--gray2)',
-                  textTransform:'uppercase',letterSpacing:'0.5px',fontFamily:'JetBrains Mono,monospace',padding:'4px 0'}}>
-                  {d}
-                </div>
-              ))}
-            </div>
-
-            {/* Day cells */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4}}>
-              {/* empty cells before month start */}
-              {Array.from({length:startOffset}).map((_,i)=>(
-                <div key={'e'+i} style={{aspectRatio:'1',borderRadius:10}} />
-              ))}
-              {Array.from({length:days}).map((_,i)=>{
-                const d = i+1;
-                const dateStr = ymd(calYear,calMonth,d);
-                const isToday = dateStr === todayStr;
-                const isSel   = dateStr === selDate;
-                const dot     = dotColor(dateStr);
-                const count   = (byDate[dateStr]||[]).filter(v=>!v.completado).length;
+      {/* ── TABLA PRINCIPAL ── */}
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{background:'linear-gradient(135deg,var(--black),var(--black2))'}}>
+                <th style={{width:36,padding:'12px 8px 12px 16px'}}></th>
+                {[
+                  {col:'clienteNombre', label:'Cliente'},
+                  {col:'tributo',       label:'Tributo / Descripción'},
+                  {col:'dias',          label:'Días'},
+                  {col:'fecha',         label:'Fecha'},
+                  {col:'prioridad',     label:'Prior.'},
+                ].map(h => (
+                  <th key={h.col}
+                    onClick={()=>handleSort(h.col)}
+                    style={{padding:'12px 14px',textAlign:'left',color:'var(--cream)',
+                      fontWeight:600,fontSize:11,fontFamily:'JetBrains Mono,monospace',
+                      cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
+                    {h.label}<SortIcon col={h.col}/>
+                  </th>
+                ))}
+                <th style={{padding:'12px 14px',color:'var(--cream)',fontSize:11,fontFamily:'JetBrains Mono,monospace'}}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{padding:'60px 20px',textAlign:'center',color:'var(--gray2)'}}>
+                    <div style={{fontSize:40,marginBottom:12}}>📅</div>
+                    <div style={{fontSize:14}}>No hay vencimientos para mostrar</div>
+                  </td>
+                </tr>
+              )}
+              {sorted.map((r, i) => {
+                const c = rowColor(r);
                 return (
-                  <div key={d} onClick={()=>setSelDate(dateStr)}
+                  <tr key={r.id}
                     style={{
-                      aspectRatio:'1',borderRadius:10,display:'flex',flexDirection:'column',
-                      alignItems:'center',justifyContent:'center',cursor:'pointer',
-                      transition:'all 0.15s',position:'relative',
-                      background: isSel ? 'var(--black)' : isToday ? 'rgba(201,169,110,0.15)' : 'var(--cream)',
-                      border: isToday && !isSel ? '2px solid var(--gold)' : '2px solid transparent',
+                      borderBottom:'1px solid var(--cream2)',
+                      borderLeft: c.border,
+                      background: c.bg,
+                      opacity: r.completado ? 0.65 : 1,
+                      transition: 'background 0.15s',
                     }}>
-                    <div style={{fontSize:14,fontWeight:isSel||isToday?700:400,
-                      color:isSel?'var(--gold2)':isToday?'var(--gold)':'var(--black)'}}>
-                      {d}
-                    </div>
-                    {dot && (
-                      <div style={{display:'flex',gap:2,marginTop:2}}>
-                        {count>0 && Array.from({length:Math.min(count,3)}).map((_,i)=>(
-                          <div key={i} style={{width:5,height:5,borderRadius:'50%',background:dot}} />
-                        ))}
-                        {count>3 && <div style={{width:5,height:5,borderRadius:'50%',background:dot,opacity:0.5}} />}
+                    {/* Checkbox */}
+                    <td style={{padding:'10px 8px 10px 14px'}}>
+                      <div className={`task-check ${r.completado?'done':''}`}
+                        onClick={()=>toggle(r.vencId)}
+                        style={{cursor:'pointer'}} />
+                    </td>
+
+                    {/* Cliente */}
+                    <td style={{padding:'10px 14px',fontWeight:600,
+                      textDecoration:r.completado?'line-through':'none',
+                      color:'var(--black)',maxWidth:180,overflow:'hidden',
+                      textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {r.clienteNombre}
+                    </td>
+
+                    {/* Tributo */}
+                    <td style={{padding:'10px 14px',color:'var(--black)',
+                      maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                      textDecoration:r.completado?'line-through':'none'}}>
+                      <span style={{fontSize:11,padding:'2px 7px',borderRadius:4,marginRight:6,
+                        background:'rgba(201,169,110,0.15)',color:'var(--gold)',
+                        fontWeight:700,fontFamily:'JetBrains Mono,monospace',
+                        textTransform:'uppercase'}}>
+                        {(r.tipo||'fiscal').slice(0,4)}
+                      </span>
+                      {r.tributo}
+                    </td>
+
+                    {/* Días */}
+                    <td style={{padding:'10px 14px'}}>
+                      <span style={{
+                        display:'inline-block',minWidth:54,textAlign:'center',
+                        padding:'4px 10px',borderRadius:20,fontWeight:700,fontSize:12,
+                        fontFamily:'JetBrains Mono,monospace',
+                        background: c.badge, color: c.badgeTxt,
+                      }}>
+                        {c.label}
+                      </span>
+                    </td>
+
+                    {/* Fecha */}
+                    <td style={{padding:'10px 14px',fontFamily:'JetBrains Mono,monospace',
+                      fontSize:12,color:'var(--gray)',whiteSpace:'nowrap'}}>
+                      {fmtDate(r.fecha)}
+                    </td>
+
+                    {/* Prioridad */}
+                    <td style={{padding:'10px 14px'}}>
+                      <span className={`badge ${r.prioridad==='alta'?'badge-red':r.prioridad==='baja'?'badge-green':'badge-gold'}`}
+                        style={{fontSize:9}}>
+                        {r.prioridad||'media'}
+                      </span>
+                    </td>
+
+                    {/* Acciones */}
+                    <td style={{padding:'10px 14px'}}>
+                      <div className="action-btns">
+                        <button className="btn-icon edit" title="Editar"
+                          onClick={()=>openEdit(vencimientos.find(x=>x.id===r.vencId))}>✏️</button>
+                        <button className="btn-icon trash" title="Eliminar"
+                          onClick={()=>handleDelete(r.vencId)}>🗑️</button>
                       </div>
-                    )}
-                  </div>
+                    </td>
+                  </tr>
                 );
               })}
-            </div>
-
-            {/* Legend */}
-            <div style={{display:'flex',gap:16,marginTop:16,paddingTop:14,borderTop:'1px solid var(--cream2)',flexWrap:'wrap'}}>
-              {[['var(--red)','Urgente / Vencido'],['var(--gold)','Pendiente'],['var(--green)','Completado']].map(([c,l])=>(
-                <div key={l} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray)'}}>
-                  <div style={{width:8,height:8,borderRadius:'50%',background:c}} />{l}
-                </div>
-              ))}
-            </div>
-          </div>
+            </tbody>
+          </table>
         </div>
 
-        {/* ── PANEL LATERAL ── */}
-        <div style={{width:360,flexShrink:0,position:'sticky',top:20}}>
-          <div className="card" style={{padding:0,overflow:'hidden'}}>
-            {/* Panel header */}
-            <div style={{background:'linear-gradient(135deg,var(--black),var(--black2))',padding:'18px 20px',
-              display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontFamily:'Playfair Display,serif',fontSize:17,fontWeight:700,color:'var(--gold2)'}}>
-                  {selDate === todayStr ? '📅 Hoy' : fmtDate(selDate)}
-                </div>
-                <div style={{fontSize:11,color:'rgba(250,248,243,0.5)',marginTop:2}}>
-                  {dayVenc.length === 0 ? 'Sin vencimientos' :
-                   `${dayVenc.filter(v=>!v.completado).length} pendiente${dayVenc.filter(v=>!v.completado).length!==1?'s':''}`}
-                </div>
-                {dayVenc.length > 0 && (
-                  <button
-                    onClick={()=>setDebugDay(selDate)}
-                    style={{marginTop:6,padding:'2px 8px',fontSize:9,background:'rgba(255,255,255,0.15)',
-                      border:'1px solid rgba(255,255,255,0.3)',borderRadius:4,color:'white',cursor:'pointer',
-                      fontFamily:'monospace'}}>
-                    🔍 debug
-                  </button>
-                )}
-              </div>
-              <button className="btn btn-gold btn-sm" onClick={openNew} style={{fontSize:12}}>+ Agregar</button>
+        {/* Leyenda de colores */}
+        <div style={{padding:'10px 20px',borderTop:'1px solid var(--cream2)',
+          display:'flex',gap:16,flexWrap:'wrap',background:'var(--cream)'}}>
+          {[
+            ['var(--red)',   'Vencido / Urgente (≤ 3 días)'],
+            ['var(--amber)', 'Próximo (4–7 días)'],
+            ['var(--gold2)', 'Esta quincena (8–15 días)'],
+            ['#22c55e',     'Completado'],
+          ].map(([color,label]) => (
+            <div key={label} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--gray)'}}>
+              <div style={{width:10,height:10,borderRadius:2,background:color,flexShrink:0}} />
+              {label}
             </div>
-
-            <div style={{padding:16,maxHeight:520,overflowY:'auto'}}>
-              {dayVenc.length === 0 ? (
-                <div className="empty-state" style={{padding:'36px 16px'}}>
-                  <div className="empty-icon" style={{fontSize:32}}>🎉</div>
-                  <p>Sin vencimientos para este día</p>
-                </div>
-              ) : (
-                (() => {
-                  const grupos = groupVenc(dayVenc);
-                  return grupos.map(grupo => {
-                    const ids   = grupo.items.map(x=>x.id);
-                    const allDone  = grupo.items.every(x=>x.completado);
-                    const someDone = grupo.items.some(x=>x.completado) && !allDone;
-                    const days     = daysUntil(grupo.fecha);
-                    const { matched: cMatch } = getClientesDelGrupo(grupo);
-
-                    return (
-                      <div key={grupo.base+'||'+grupo.fecha} style={{
-                        padding:'12px 14px',borderRadius:10,marginBottom:8,
-                        background: allDone ? 'var(--cream)' : days<0 ? 'rgba(192,57,43,0.06)' : days<=3 ? 'rgba(192,57,43,0.04)' : 'rgba(201,169,110,0.04)',
-                        border: allDone ? '1px solid var(--cream2)' : days<0 ? '1px solid rgba(192,57,43,0.25)' : days<=3 ? '1px solid rgba(192,57,43,0.18)' : '1px solid rgba(201,169,110,0.2)',
-                        opacity: allDone ? 0.65 : 1,
-                      }}>
-                        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
-
-                          {/* Checkbox grupo */}
-                          <div onClick={()=>toggleGroup(ids,!allDone)} style={{
-                            marginTop:2,flexShrink:0,width:16,height:16,borderRadius:4,
-                            border: allDone ? '2px solid var(--gold)' : someDone ? '2px solid var(--gold)' : '2px solid var(--gray3)',
-                            background: allDone ? 'var(--gold)' : someDone ? 'rgba(201,169,110,0.3)' : 'transparent',
-                            cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'
-                          }}>
-                            {allDone && <span style={{fontSize:10,color:'white',lineHeight:1}}>✓</span>}
-                            {someDone && <span style={{fontSize:10,color:'var(--gold)',lineHeight:1}}>–</span>}
-                          </div>
-
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:13,fontWeight:600,color:'var(--black)',
-                              textDecoration:allDone?'line-through':'none',lineHeight:1.3}}>
-                              {grupo.base}
-                            </div>
-                            <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap',alignItems:'center'}}>
-                              <span className={`badge ${grupo.tipo==='fiscal'?'badge-blue':grupo.tipo==='laboral'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
-                                {grupo.tipo||'fiscal'}
-                              </span>
-                              <span className={`badge ${grupo.prioridad==='alta'?'badge-red':grupo.prioridad==='baja'?'badge-green':'badge-gold'}`} style={{fontSize:9}}>
-                                {grupo.prioridad||'media'}
-                              </span>
-                              {grupo.items.length > 1 && (
-                                <span className="badge badge-gray"
-                                  style={{fontSize:9,cursor:'pointer',textDecoration:'underline dotted'}}
-                                  onClick={e=>{e.stopPropagation();setVencDetail(grupo);}}>
-                                  {grupo.items.length} venc.
-                                </span>
-                              )}
-                            </div>
-
-                            {cMatch.length > 0 && (
-                              <div style={{marginTop:8,paddingTop:7,borderTop:'1px dashed var(--cream2)'}}>
-                                <div style={{fontSize:9,fontWeight:700,color:'var(--gray)',
-                                  textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:5}}>
-                                  {cMatch.length} cliente{cMatch.length!==1?'s':''} afectado{cMatch.length!==1?'s':''}
-                                </div>
-                                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                                  {cMatch.slice(0,8).map(c=>(
-                                    <span key={c.id} style={{
-                                      fontSize:10,padding:'2px 8px',borderRadius:20,
-                                      background:'rgba(201,169,110,0.12)',
-                                      color:'var(--black)',border:'1px solid rgba(201,169,110,0.35)',
-                                      fontWeight:500,whiteSpace:'nowrap',
-                                      maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'
-                                    }}>{c.nombre}</span>
-                                  ))}
-                                  {cMatch.length > 8 && (
-                                    <span style={{fontSize:10,color:'var(--gray)',padding:'2px 4px'}}>
-                                      +{cMatch.length-8} más
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div style={{display:'flex',gap:4,flexShrink:0}}>
-                            <button className="btn btn-ghost btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
-                              onClick={()=>openEdit(grupo.items[0])}>✏️</button>
-                            <button className="btn btn-danger btn-sm btn-icon" style={{width:28,height:28,fontSize:12}}
-                              onClick={async()=>{
-                                const ok = await Swal.fire({
-                                  icon:'warning',title:'¿Eliminar vencimiento?',
-                                  text: grupo.items.length>1 ? 'Se eliminarán '+grupo.items.length+' registros agrupados.' : 'Se eliminará este vencimiento.',
-                                  showCancelButton:true,confirmButtonText:'Sí, eliminar',
-                                  cancelButtonText:'Cancelar',customClass:{popup:'swal-ap'}
-                                });
-                                if (!ok.isConfirmed) return;
-                                const fb = FB();
-                                await Promise.all(ids.map(id=>fb.deleteDoc(fb.doc(fb.db,'vencimientos',id)).catch(()=>{})));
-                                setVencimientos(prev=>prev.filter(x=>!ids.includes(x.id)));
-                              }}>🗑️</button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()
-              )}            </div>
-          </div>
-
-                    {/* Próximos 7 días — agrupados */}
-          <div className="card" style={{marginTop:16,padding:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
-              letterSpacing:'1px',fontFamily:'JetBrains Mono,monospace',marginBottom:12}}>
-              Próximos 7 días
-            </div>
-            {(() => {
-              const proximos = vencimientos
-                .filter(v=>!v.completado && daysUntil(v.fecha)>=0 && daysUntil(v.fecha)<=7)
-                .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-              if (proximos.length===0) return (
-                <div style={{fontSize:12,color:'var(--green)',fontWeight:600}}>✓ Sin urgencias esta semana</div>
-              );
-              // Agrupar por nombre base + fecha
-              const grupos = groupVenc(proximos);
-              return grupos.map(grupo=>{
-                const d = new Date(grupo.fecha+'T12:00:00');
-                const { matched: pMatch, fallbackText: pFallback } = getClientesDelGrupo(grupo);
-                const ids = grupo.items.map(x=>x.id);
-                const allDone = grupo.items.every(x=>x.completado);
-                return (
-                  <div key={grupo.base+grupo.fecha} onClick={()=>setSelDate(grupo.fecha)}
-                    style={{padding:'9px 0',borderBottom:'1px solid var(--cream2)',cursor:'pointer',
-                      opacity: allDone ? 0.5 : 1}}>
-                    <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
-                      <div style={{width:32,height:32,borderRadius:8,background:'var(--red2)',
-                        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                        flexShrink:0,marginTop:1}}>
-                        <div style={{fontSize:14,fontWeight:700,color:'var(--red)',lineHeight:1}}>{d.getDate()}</div>
-                        <div style={{fontSize:8,color:'var(--red)',textTransform:'uppercase',
-                          fontFamily:'JetBrains Mono,monospace'}}>{MONTHS_ES[d.getMonth()]}</div>
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,overflow:'hidden',
-                          textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.3,
-                          textDecoration:allDone?'line-through':'none'}}>
-                          {grupo.base}
-                          {grupo.items.length > 1 &&
-                            <span style={{marginLeft:5,fontSize:10,color:'var(--gray)',fontWeight:400}}>
-                              ({grupo.items.length})
-                            </span>
-                          }
-                        </div>
-                        {pMatch.length > 0 ? (
-                          <div style={{marginTop:4,display:'flex',flexWrap:'wrap',gap:3}}>
-                            {pMatch.slice(0,4).map(c=>(
-                              <span key={c.id} style={{
-                                fontSize:9,padding:'1px 6px',borderRadius:20,
-                                background:'rgba(201,169,110,0.12)',
-                                color:'var(--black)',border:'1px solid rgba(201,169,110,0.3)',
-                                fontWeight:500,whiteSpace:'nowrap',
-                                maxWidth:110,overflow:'hidden',textOverflow:'ellipsis'
-                              }}>{c.nombre}</span>
-                            ))}
-                            {pMatch.length > 4 && (
-                              <span style={{fontSize:9,color:'var(--gray)',padding:'1px 3px'}}>
-                                +{pMatch.length-4}
-                              </span>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-
+          ))}
         </div>
       </div>
 
-      {/* FORM MODAL */}
+      {/* ── MODAL FORMULARIO ── */}
       {modal === 'form' && (
-        <Modal title={selVenc?'✏️ Editar Vencimiento':'📅 Nuevo Vencimiento'}
+        <Modal title={selVenc ? '✏️ Editar Vencimiento' : '📅 Nuevo Vencimiento'}
           onClose={()=>{setModal(null);setSelVenc(null);}}
           footer={<>
             <button className="btn btn-ghost btn-sm" onClick={()=>{setModal(null);setSelVenc(null);}}>Cancelar</button>
@@ -3173,7 +2871,7 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
             <label className="form-label">Descripción *</label>
             <input className="form-input" value={form.nombre||''}
               onChange={e=>setForm(f=>({...f,nombre:e.target.value}))}
-              placeholder="Ej: IVA Mensual - Abril" autoFocus />
+              placeholder="Ej: IIBB Mensual, IVA, Monotributo..." autoFocus />
           </div>
 
           <div className="form-grid-2">
@@ -3208,19 +2906,17 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
             </select>
           </div>
 
-          {/* PERIODICIDAD */}
           <div className="form-group">
-            <label className="form-label">Recurrencia / Periodicidad</label>
+            <label className="form-label">Recurrencia</label>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:12}}>
               {[
-                {v:'puntual',    l:'📌 Fecha puntual',   d:'Un día específico'},
-                {v:'mensual',    l:'📆 Mensual',          d:'Mismo día c/mes'},
-                {v:'mensual-n',  l:'📆 Mensual (día rel)',d:'Ej: 4° jueves'},
-                {v:'bimestral',  l:'📅 Bimestral',        d:'Cada 2 meses'},
-                {v:'trimestral', l:'📅 Trimestral',       d:'Cada 3 meses'},
-                {v:'anual',      l:'🗓️ Anual',            d:'Mismo día c/año'},
+                {v:'puntual',    l:'📌 Puntual',    d:'Fecha exacta'},
+                {v:'mensual',    l:'📆 Mensual',     d:'Mismo día c/mes'},
+                {v:'bimestral',  l:'📅 Bimestral',   d:'Cada 2 meses'},
+                {v:'trimestral', l:'📅 Trimestral',  d:'Cada 3 meses'},
+                {v:'anual',      l:'🗓️ Anual',       d:'Cada año'},
               ].map(opt=>(
-                <div key={opt.v} onClick={()=>setForm(f=>({...f,periodicidad:opt.v,fecha:'',semana:'',diaSemana:''}))}
+                <div key={opt.v} onClick={()=>setForm(f=>({...f,periodicidad:opt.v,fecha:'',diaMes:''}))}
                   style={{padding:'8px 10px',borderRadius:'var(--r2)',cursor:'pointer',transition:'all 0.15s',textAlign:'center',
                     background:(form.periodicidad||'puntual')===opt.v?'rgba(201,169,110,0.18)':'var(--cream)',
                     border:(form.periodicidad||'puntual')===opt.v?'2px solid var(--gold)':'2px solid transparent'}}>
@@ -3231,57 +2927,19 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
             </div>
           </div>
 
-          {/* PUNTUAL or ANUAL → date picker */}
           {(!form.periodicidad||form.periodicidad==='puntual'||form.periodicidad==='anual') && (
             <div className="form-group">
-              <label className="form-label">{form.periodicidad==='anual'?'Fecha anual (día y mes)':'Fecha exacta *'}</label>
+              <label className="form-label">Fecha *</label>
               <input className="form-input" type="date" value={form.fecha||''}
                 onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} />
-              {form.periodicidad==='anual' && <div style={{fontSize:11,color:'var(--gray)',marginTop:3}}>Se repetirá cada año en esta fecha. Se generarán los próximos 5 años.</div>}
             </div>
           )}
-
-          {/* MENSUAL por día del mes */}
           {(form.periodicidad==='mensual'||form.periodicidad==='bimestral'||form.periodicidad==='trimestral') && (
             <div className="form-group">
               <label className="form-label">Día del mes (1–31)</label>
               <input className="form-input" type="number" min="1" max="31" value={form.diaMes||''}
                 onChange={e=>setForm(f=>({...f,diaMes:e.target.value}))}
-                placeholder="Ej: 20 (para el día 20 de cada mes)" />
-              <div style={{fontSize:11,color:'var(--gray)',marginTop:3}}>
-                {form.periodicidad==='bimestral'?'Se generarán meses alternos.':form.periodicidad==='trimestral'?'Se generarán cada 3 meses.':'Se generará para el mes actual y los próximos 11 meses.'}
-              </div>
-            </div>
-          )}
-
-          {/* MENSUAL por día relativo: ej. 4° jueves */}
-          {form.periodicidad==='mensual-n' && (
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Semana del mes</label>
-                <select className="form-select" value={form.semana||'1'} onChange={e=>setForm(f=>({...f,semana:e.target.value}))}>
-                  <option value="1">1° semana</option>
-                  <option value="2">2° semana</option>
-                  <option value="3">3° semana</option>
-                  <option value="4">4° semana</option>
-                  <option value="-1">Última semana</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Día de la semana</label>
-                <select className="form-select" value={form.diaSemana||'4'} onChange={e=>setForm(f=>({...f,diaSemana:e.target.value}))}>
-                  <option value="1">Lunes</option>
-                  <option value="2">Martes</option>
-                  <option value="3">Miércoles</option>
-                  <option value="4">Jueves</option>
-                  <option value="5">Viernes</option>
-                  <option value="6">Sábado</option>
-                  <option value="0">Domingo</option>
-                </select>
-              </div>
-              <div style={{gridColumn:'1/-1',fontSize:11,color:'var(--gray)',marginTop:-6}}>
-                Ej: 4° Jueves de cada mes = vencimiento el cuarto jueves. Se generarán los próximos 12 meses.
-              </div>
+                placeholder="Ej: 20" />
             </div>
           )}
 
@@ -3289,170 +2947,12 @@ function Vencimientos({ vencimientos, setVencimientos, clients, tareas, setTarea
             <label className="form-label">Notas</label>
             <textarea className="form-textarea" value={form.notas||''}
               onChange={e=>setForm(f=>({...f,notas:e.target.value}))}
-              placeholder="Detalles adicionales..." style={{minHeight:60}} />
+              placeholder="Observaciones..." style={{minHeight:60}} />
           </div>
         </Modal>
       )}
 
-      {/* ── MODAL DETALLE DE VENCIMIENTOS AGRUPADOS ── */}
-      {vencDetail && (
-        <Modal
-          title={`📋 ${vencDetail.base} — ${fmtDate(vencDetail.fecha)}`}
-          onClose={()=>setVencDetail(null)}
-          footer={
-            <button className="btn btn-ghost btn-sm" onClick={()=>setVencDetail(null)}>Cerrar</button>
-          }>
-          <div style={{marginBottom:14,padding:'10px 14px',background:'var(--cream2)',
-            borderRadius:8,fontSize:12,color:'var(--gray)'}}>
-            <strong>{vencDetail.items.length} registro{vencDetail.items.length!==1?'s':''}</strong> agrupados bajo este vencimiento.
-            El checkbox del panel completa/descompleta todos a la vez.
-          </div>
-
-          {/* Tabla de registros individuales */}
-          <div style={{border:'1px solid var(--cream2)',borderRadius:10,overflow:'hidden'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-              <thead>
-                <tr style={{background:'linear-gradient(135deg,var(--black),var(--black2))'}}>
-                  {['Estado','Nombre completo','CUIT/Clientes','Fecha','Prioridad'].map(h=>(
-                    <th key={h} style={{padding:'9px 12px',textAlign:'left',color:'var(--cream)',
-                      fontWeight:600,fontSize:11,fontFamily:'JetBrains Mono,monospace'}}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vencDetail.items
-                  .sort((a,b)=>a.completado-b.completado || a.nombre.localeCompare(b.nombre))
-                  .map((v,i)=>{
-                    const { matched: cm } = getClientesDelVenc(v);
-                    return (
-                      <tr key={v.id} style={{
-                        borderTop:'1px solid var(--cream2)',
-                        background: v.completado ? 'var(--cream)' : i%2===0 ? 'white' : 'var(--cream3,#fdfcf9)',
-                        opacity: v.completado ? 0.6 : 1,
-                      }}>
-                        <td style={{padding:'8px 12px'}}>
-                          <div className={`task-check ${v.completado?'done':''}`}
-                            onClick={()=>toggle(v.id)}
-                            style={{cursor:'pointer'}} />
-                        </td>
-                        <td style={{padding:'8px 12px',fontWeight:v.completado?400:600,
-                          textDecoration:v.completado?'line-through':'none',color:'var(--black)'}}>
-                          {v.nombre}
-                        </td>
-                        <td style={{padding:'8px 12px'}}>
-                          {cm.length > 0 ? (
-                            <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                              {cm.map(c=>(
-                                <span key={c.id} style={{
-                                  fontSize:10,padding:'1px 6px',borderRadius:20,
-                                  background:'rgba(201,169,110,0.12)',
-                                  border:'1px solid rgba(201,169,110,0.3)',
-                                  color:'var(--black)',fontWeight:500
-                                }}>{c.nombre}</span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span style={{color:'var(--gray)',fontSize:11,fontStyle:'italic'}}>
-                              {v.clientes || '—'}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{padding:'8px 12px',fontFamily:'JetBrains Mono,monospace',
-                          fontSize:11,color:'var(--gray)',whiteSpace:'nowrap'}}>
-                          {v.fecha}
-                        </td>
-                        <td style={{padding:'8px 12px'}}>
-                          <span className={`badge ${v.prioridad==='alta'?'badge-red':v.prioridad==='baja'?'badge-green':'badge-gold'}`}
-                            style={{fontSize:9}}>
-                            {v.prioridad||'media'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Clientes totales afectados */}
-          {(() => {
-            const allMatched = [...new Map(
-              vencDetail.items.flatMap(v => getClientesDelVenc(v).matched)
-                .map(c=>[c.id,c])
-            ).values()];
-            if (!allMatched.length) return null;
-            return (
-              <div style={{marginTop:16,padding:'12px 14px',background:'rgba(201,169,110,0.08)',
-                border:'1px solid rgba(201,169,110,0.25)',borderRadius:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:'var(--gray)',textTransform:'uppercase',
-                  letterSpacing:'0.8px',marginBottom:8}}>
-                  {allMatched.length} cliente{allMatched.length!==1?'s':''} afectado{allMatched.length!==1?'s':''}
-                </div>
-                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                  {allMatched.map(c=>(
-                    <span key={c.id} style={{fontSize:11,padding:'3px 10px',borderRadius:20,
-                      background:'rgba(201,169,110,0.15)',border:'1px solid rgba(201,169,110,0.35)',
-                      color:'var(--black)',fontWeight:500}}>
-                      {c.nombre}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-        </Modal>
-      )}
-
-      {/* ── DEBUG MODAL ── */}
-      {debugDay && (
-        <Modal title={'🔍 Debug matching — ' + debugDay} onClose={()=>setDebugDay(null)}
-          footer={<button className="btn btn-ghost btn-sm" onClick={()=>setDebugDay(null)}>Cerrar</button>}>
-          <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,lineHeight:1.8}}>
-            {(byDate[debugDay]||[]).map((v,i) => {
-              const tid = getTributoId(v.nombre);
-              const cr  = getCuitRange(v.nombre);
-              const todosConTributo = clients.filter(c =>
-                c.estado!=='inactivo' &&
-                Array.isArray(c.tributos) &&
-                c.tributos.some(t => t.id === tid)
-              );
-              const matchFinal = todosConTributo.filter(c => {
-                if (!cr) return true;
-                const d = getCuitDigit(c.cuit);
-                return !isNaN(d) && cr.includes(d);
-              });
-              return (
-                <div key={v.id} style={{marginBottom:16,padding:12,background:'var(--cream)',borderRadius:8,border:'1px solid var(--cream2)'}}>
-                  <div style={{fontWeight:700,marginBottom:6,color:'var(--black)'}}>{v.nombre}</div>
-                  <div><span style={{color:'var(--gray)'}}>tributeId:</span> <b style={{color:tid?'var(--green)':'var(--red)'}}>{tid||'⚠️ NO DETECTADO'}</b></div>
-                  <div><span style={{color:'var(--gray)'}}>CUIT range:</span> <b>{cr ? '['+cr.join(',')+']' : 'ninguno (todos los CUITs)'}</b></div>
-                  <div style={{marginTop:6}}><span style={{color:'var(--gray)'}}>Clientes con tributeId en tributos[]:</span></div>
-                  {todosConTributo.length === 0
-                    ? <div style={{color:'var(--red)',paddingLeft:12}}>⚠️ Ningún cliente tiene este tributo cargado</div>
-                    : todosConTributo.map(c => {
-                        const d = getCuitDigit(c.cuit);
-                        const pasaCuit = !cr || (!isNaN(d) && cr.includes(d));
-                        return (
-                          <div key={c.id} style={{paddingLeft:12,color:pasaCuit?'var(--green)':'var(--gray)'}}>
-                            {pasaCuit ? '✓' : '✗'} {c.nombre}
-                            {cr && <span style={{fontSize:10}}> (CUIT digit: {isNaN(d)?'sin CUIT':d})</span>}
-                          </div>
-                        );
-                      })
-                  }
-                  <div style={{marginTop:6,fontWeight:600,color:'var(--black)'}}>
-                    → Match final: {matchFinal.length > 0 ? matchFinal.map(c=>c.nombre).join(', ') : '(ninguno)'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Modal>
-      )}
-
-      {/* ── IMPORTAR VENCIMIENTOS MODAL ── */}
+      {/* ── IMPORTAR ── */}
       {showImport && (
         <ImportarVencimientos
           vencimientos={vencimientos}
