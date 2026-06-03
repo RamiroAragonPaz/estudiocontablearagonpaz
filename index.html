@@ -2,8 +2,57 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <link rel="icon" type="image/svg+xml" href="logoBlack2.ico" />
+
+  <!-- PWA / iOS home screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Aragón Paz" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#111110" />
+  <!-- Ícono para iOS "Agregar a inicio" — apunta al mismo .ico que usás -->
+  <link rel="apple-touch-icon" href="logoBlack2.ico" />
+  <!-- Si tenés un PNG 180×180 usá: <link rel="apple-touch-icon" sizes="180x180" href="logo180.png" /> -->
+  <script>
+    // Genera un PNG 180x180 en canvas y lo usa como apple-touch-icon dinámico
+    // (funciona cuando no hay imagen externa disponible)
+    (function() {
+      try {
+        var c = document.createElement('canvas');
+        c.width = c.height = 180;
+        var ctx = c.getContext('2d');
+        // Fondo negro
+        ctx.fillStyle = '#111110';
+        ctx.fillRect(0,0,180,180);
+        // Rounded rect dorado
+        var r = 36;
+        ctx.beginPath();
+        ctx.moveTo(r,10); ctx.lineTo(170-r,10);
+        ctx.quadraticCurveTo(170,10,170,r);
+        ctx.lineTo(170,170-r); ctx.quadraticCurveTo(170,170,170-r,170);
+        ctx.lineTo(r,170); ctx.quadraticCurveTo(10,170,10,170-r);
+        ctx.lineTo(10,r); ctx.quadraticCurveTo(10,10,r,10);
+        ctx.closePath();
+        var grad = ctx.createLinearGradient(10,10,170,170);
+        grad.addColorStop(0,'#c9a96e'); grad.addColorStop(1,'#e2c48a');
+        ctx.fillStyle = grad;
+        ctx.fill();
+        // Texto AP
+        ctx.fillStyle = '#111110';
+        ctx.font = 'bold 72px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('AP', 90, 94);
+        // Inyectar como link
+        var link = document.createElement('link');
+        link.rel = 'apple-touch-icon';
+        link.href = c.toDataURL('image/png');
+        document.head.appendChild(link);
+      } catch(e) {}
+    })();
+  </script>
+
   <title>Aragón Paz · Estudio Contable</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
@@ -1883,6 +1932,14 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
   };
   const openDetail = (c) => { setSelected(c); setDetailTab('info'); setView('detail'); };
 
+  // Mantener selected sincronizado cuando clients cambia desde afuera (ej: cobro registrado)
+  React.useEffect(() => {
+    if (selected && view === 'detail') {
+      const updated = clients.find(x => x.id === selected.id);
+      if (updated) setSelected(updated);
+    }
+  }, [clients]);
+
   // Expose openDetail for cross-component navigation (used by Dashboard)
   React.useEffect(() => {
     window.__openClient = (clientId) => {
@@ -2247,45 +2304,73 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
     const c = selected; if (!c) return null;
     return (
       <div>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:28}}>
-          <div style={{display:'flex',alignItems:'center',gap:14}}>
+        {/* Header — colapsado en mobile */}
+        <div style={{marginBottom:20}}>
+          {/* Fila 1: volver + acciones */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
             <button className="btn btn-ghost btn-sm" onClick={backToList}>← Volver</button>
-            <div style={{width:52,height:52,borderRadius:14,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:'var(--black)'}}>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-danger btn-sm" onClick={()=>handleDelete(c.id)}>🗑️</button>
+              <button className="btn btn-gold btn-sm" onClick={()=>openEdit(c)}>✏️ Editar</button>
+            </div>
+          </div>
+          {/* Fila 2: avatar + nombre + badges */}
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{width:46,height:46,borderRadius:12,flexShrink:0,
+              background:'linear-gradient(135deg,var(--gold),var(--gold2))',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontFamily:'Playfair Display,serif',fontSize:18,fontWeight:700,color:'var(--black)'}}>
               {initials(c.nombre)}
             </div>
-            <div>
-              <div className="page-title" style={{fontSize:26}}>{c.nombre}</div>
-              <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
-                <span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>
+            <div style={{minWidth:0}}>
+              <div className="page-title" style={{fontSize:'clamp(16px,4vw,26px)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {c.nombre}
+              </div>
+              <div style={{display:'flex',gap:6,marginTop:4,alignItems:'center',flexWrap:'wrap'}}>
+                <span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`} style={{fontSize:9}}>
                   {c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}
                 </span>
-                <span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`}>{c.estado}</span>
-                {c.cuit && <span style={{fontSize:12,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{c.cuit}</span>}
+                <span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:9}}>{c.estado}</span>
+                {c.cuit && <span style={{fontSize:11,color:'var(--gray)',fontFamily:'JetBrains Mono,monospace'}}>{c.cuit}</span>}
               </div>
             </div>
           </div>
-          <div style={{display:'flex',gap:10}}>
-            <button className="btn btn-danger btn-sm" onClick={()=>handleDelete(c.id)}>🗑️</button>
-            <button className="btn btn-gold" onClick={()=>openEdit(c)}>✏️ Editar</button>
-          </div>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:24}}>
+
+        {/* Tarjetas stats — 2×2 en mobile, 4×1 en desktop */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginBottom:18}}>
           {[
-            ['Honorario Mensual',fmt(c.honorario||0),'var(--gold)'],
-            ['Saldo Pendiente',c.saldoPendiente>0?fmt(c.saldoPendiente):'Al día ✓',c.saldoPendiente>0?'var(--amber)':'var(--green)'],
-            ['Cliente desde',c.desde?new Date(c.desde+'T12:00:00').getFullYear():'-','var(--black)'],
-            ['Tributos activos',(c.tributos||[]).length,'var(--black)'],
+            ['Honorario',     fmt(c.honorario||0),              'var(--gold)'],
+            ['Saldo',         c.saldoPendiente>0?fmt(c.saldoPendiente):'Al día ✓', c.saldoPendiente>0?'var(--amber)':'var(--green)'],
+            ['Desde',         c.desde?new Date(c.desde+'T12:00:00').getFullYear():'-', 'var(--black)'],
+            ['Tributos',      (c.tributos||[]).length,           'var(--black)'],
           ].map(([label,val,color])=>(
-            <div key={label} className="stat-card" style={{padding:'16px 18px'}}>
-              <div className="stat-label">{label}</div>
-              <div style={{fontFamily:'Playfair Display,serif',fontSize:22,fontWeight:700,color,marginTop:4}}>{val}</div>
+            <div key={label} className="stat-card" style={{padding:'13px 14px'}}>
+              <div className="stat-label" style={{fontSize:10}}>{label}</div>
+              <div style={{fontFamily:'Playfair Display,serif',fontSize:'clamp(16px,4vw,22px)',fontWeight:700,color,marginTop:4,lineHeight:1.2}}>{val}</div>
             </div>
           ))}
         </div>
-        <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,marginBottom:20,width:'fit-content'}}>
-          {[['info','📋 Información'],['tributos','📊 Tributos'],['claves','🔑 Claves'],['notas','📝 Notas'],['recurrentes','🔁 Recurrentes']].map(([t,l])=>(
-            <button key={t} className={`tab ${detailTab===t?'active':''}`} style={{minWidth:130}} onClick={()=>setDetailTab(t)}>{l}</button>
-          ))}
+
+        {/* Tabs — scroll horizontal en mobile */}
+        <div style={{
+          overflowX:'auto', WebkitOverflowScrolling:'touch',
+          marginBottom:16, scrollbarWidth:'none',
+        }}>
+          <div style={{display:'flex',gap:4,background:'var(--cream2)',padding:4,borderRadius:10,width:'max-content',minWidth:'100%'}}>
+            {[
+              ['info',        '📋 Info'],
+              ['tributos',    '📊 Tributos'],
+              ['claves',      '🔑 Claves'],
+              ['notas',       '📝 Notas'],
+              ['recurrentes', '🔁 Recurrentes'],
+            ].map(([t,l])=>(
+              <button key={t}
+                className={`tab ${detailTab===t?'active':''}`}
+                style={{minWidth:'max-content',padding:'8px 14px',fontSize:13,whiteSpace:'nowrap'}}
+                onClick={()=>setDetailTab(t)}>{l}</button>
+            ))}
+          </div>
         </div>
         {detailTab==='info' && (
           <div className="grid-2">
