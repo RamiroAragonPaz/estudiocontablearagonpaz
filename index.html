@@ -740,48 +740,239 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── RESPONSIVE ────────────────────────────────── */
+    /* ═══════════════════════════════════════════════════
+       RESPONSIVE — 3 breakpoints
+       Desktop  ≥ 1025px  : sidebar 260px (o colapsado 64px)
+       Tablet   768–1024px: sidebar 64px íconos
+       Mobile   < 768px   : sin sidebar, bottom nav fijo
+    ═══════════════════════════════════════════════════ */
+
+    /* ── Desktop large: 2-col stats ── */
     @media (max-width: 1200px) {
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
     }
-    @media (max-width: 900px) {
-      :root { --sidebar: 0px; }
-      .sidebar { display: none; }
-      .main { padding: 20px; }
-      .grid-2, .grid-6040 { grid-template-columns: 1fr; }
-    }
 
-    /* ── iPAD OPTIMIZATIONS (768px–1024px) ─────────── */
+    /* ── TABLET (768px – 1024px) ────────────────────── */
     @media (min-width: 768px) and (max-width: 1024px) {
       :root { --sidebar: 64px; }
-      .sidebar { width: 64px !important; }
+
+      /* Sidebar colapsado a íconos */
+      .sidebar {
+        width: 64px !important;
+        display: flex !important;
+      }
       .sidebar-brand, .sidebar-brand-sub,
       .nav-section-label, .nav-label, .nav-badge,
-      .user-info, .btn-logout { display: none !important; }
-      .sidebar-header { padding: 18px 13px; }
-      .nav-item { justify-content: center; padding: 13px 0; }
-      .nav-icon { font-size: 22px !important; }
-      .sidebar-user { justify-content: center; padding: 16px 10px; }
-      .main { margin-left: 64px; padding: 20px 18px; }
-      .page-title { font-size: 24px; }
+      .user-info, .btn-logout,
+      .sidebar-toggle { display: none !important; }
+      .sidebar-header { padding: 16px 13px; justify-content: center; }
+      .nav-item {
+        justify-content: center;
+        padding: 12px 0;
+        min-height: 48px;
+      }
+      .nav-icon { font-size: 20px !important; }
+      .sidebar-user { justify-content: center; padding: 14px 10px; }
+
+      /* Main */
+      .main { margin-left: 64px !important; padding: 20px 16px; }
+      .page-title { font-size: 22px; }
+      .page-subtitle { font-size: 12px; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .grid-2, .grid-6040 { grid-template-columns: 1fr; }
-      /* Tabla vencimientos en iPad: columnas clave visibles */
-      .venc-col-prioridad { display: none; }
-      /* Botones más grandes para touch */
-      .btn, .btn-gold, .btn-ghost { padding: 11px 18px; font-size: 14px; min-height: 44px; }
-      .btn-icon { width: 38px; height: 38px; font-size: 16px; }
-      .nav-item { min-height: 48px; }
-      /* Touch-friendly checkboxes */
+
+      /* Touch targets */
+      .btn, .btn-gold, .btn-ghost { min-height: 42px; font-size: 13px; }
+      .btn-icon { width: 36px; height: 36px; font-size: 15px; }
       .task-check { width: 22px !important; height: 22px !important; }
-      /* Formularios más espaciados */
-      .form-input, .form-select, .form-textarea { font-size: 16px; padding: 12px 14px; min-height: 44px; }
+
+      /* Forms — prevent iOS zoom on focus */
+      .form-input, .form-select, .form-textarea { font-size: 16px; min-height: 44px; }
+
+      /* Tabla: ocultar columnas menos críticas */
+      .col-hide-tablet { display: none !important; }
     }
 
-    /* ── iPAD PORTRAIT específico ── */
+    /* ── iPAD portrait (768–834px) ── */
     @media (min-width: 768px) and (max-width: 834px) {
-      .main { padding: 16px; }
-      .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .main { padding: 16px 14px; }
+      .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .page-header > div:last-child { width: 100%; justify-content: flex-start; }
+    }
+
+    /* ── MOBILE (< 768px) ───────────────────────────── */
+    @media (max-width: 767px) {
+      :root { --sidebar: 0px; }
+
+      /* Sidebar completamente oculto */
+      .sidebar { display: none !important; }
+      .sidebar-toggle { display: none !important; }
+
+      /* Main ocupa todo el ancho, con padding bottom para el bottom nav */
+      .main {
+        margin-left: 0 !important;
+        padding: 16px 14px 80px;
+        width: 100%;
+      }
+      .main.collapsed { margin-left: 0 !important; }
+
+      /* Tipografía */
+      .page-title { font-size: 20px; letter-spacing: -0.5px; }
+      .page-subtitle { font-size: 12px; }
+      .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .page-header > div:last-child {
+        display: flex; flex-wrap: wrap; gap: 8px; width: 100%;
+      }
+
+      /* Grids a 1 columna */
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .grid-2, .grid-6040 { grid-template-columns: 1fr; gap: 14px; }
+
+      /* Cards */
+      .card { padding: 16px; border-radius: 10px; }
+      .card-title { font-size: 14px; }
+
+      /* Botones */
+      .btn, .btn-gold, .btn-ghost {
+        font-size: 13px;
+        padding: 10px 14px;
+        min-height: 42px;
+      }
+      .btn-sm { font-size: 12px; padding: 8px 12px; min-height: 36px; }
+      .btn-icon { width: 36px; height: 36px; font-size: 14px; }
+
+      /* Forms */
+      .form-input, .form-select, .form-textarea { font-size: 16px; min-height: 44px; }
+      .form-grid-2 { grid-template-columns: 1fr; }
+
+      /* Touch checkboxes */
+      .task-check { width: 22px !important; height: 22px !important; }
+
+      /* Modales a pantalla completa */
+      .modal-overlay { align-items: flex-end; }
+      .modal-box { border-radius: 20px 20px 0 0; max-height: 92vh; width: 100% !important; max-width: 100% !important; }
+
+      /* Tablas: scroll horizontal, fuente pequeña */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { font-size: 12px; }
+      th, td { padding: 9px 10px !important; white-space: nowrap; }
+
+      /* Columnas que se ocultan en mobile */
+      .col-hide-mobile { display: none !important; }
+
+      /* Stat cards */
+      .stat-value { font-size: 22px !important; }
+      .stat-icon { font-size: 22px !important; }
+    }
+
+    /* ═══════════════════════════════════════════════
+       BOTTOM NAV — solo mobile (< 768px)
+    ═══════════════════════════════════════════════ */
+    .bottom-nav {
+      display: none;
+    }
+    @media (max-width: 767px) {
+      .bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        height: 62px;
+        background: var(--black);
+        border-top: 1px solid rgba(201,169,110,0.18);
+        z-index: 300;
+        align-items: stretch;
+        box-shadow: 0 -4px 20px rgba(17,17,16,0.25);
+      }
+      .bottom-nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border: none;
+        background: transparent;
+        color: rgba(250,248,243,0.45);
+        font-family: 'Montserrat', sans-serif;
+        position: relative;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .bottom-nav-item:active { background: rgba(201,169,110,0.08); }
+      .bottom-nav-item.active {
+        color: var(--gold2);
+        background: rgba(201,169,110,0.08);
+      }
+      .bottom-nav-item.active::after {
+        content: '';
+        position: absolute;
+        top: 0; left: 20%; right: 20%;
+        height: 2px;
+        background: var(--gold);
+        border-radius: 0 0 3px 3px;
+      }
+      .bottom-nav-icon { font-size: 18px; line-height: 1; }
+      .bottom-nav-label {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 52px;
+        text-align: center;
+      }
+      .bottom-nav-badge {
+        position: absolute;
+        top: 6px; right: calc(50% - 18px);
+        background: var(--red);
+        color: #fff;
+        font-size: 8px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        padding: 1px 4px;
+        border-radius: 99px;
+        min-width: 14px;
+        text-align: center;
+      }
+    }
+
+    /* ── TABLA CLIENTES — control de columnas ────────── */
+    /* En todas las resoluciones: nowrap y truncado */
+    .tbl-cliente-nombre {
+      font-weight: 600;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tbl-cuit {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--gray);
+      white-space: nowrap;
+    }
+    .tbl-tipo { white-space: nowrap; }
+    .tbl-servicio {
+      font-size: 12px;
+      color: var(--gray);
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tbl-mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      white-space: nowrap;
     }
 
 
@@ -1120,7 +1311,7 @@ function Dashboard({ clients, vencimientos, tareas, notas, setSection, setTareas
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">Buenos días </div>
+          <div className="page-title">Buenos días ☀️</div>
           <div className="page-subtitle">{dayName}, {dateDisplay} · Todo listo para arrancar</div>
         </div>
         <div className="page-date" style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end'}}>
@@ -2214,28 +2405,39 @@ function Clientes({ clients, setClients, vencimientos, setVencimientos, tributos
             <div className="table-wrap">
               <table>
                 <thead><tr>
-                  <th style={{paddingLeft:16}}>Cliente</th><th>CUIT</th><th>Tipo</th>
-                  <th>Servicio</th><th>Tributos</th><th>Honorario</th><th>Saldo</th><th>Estado</th><th></th>
+                  <th style={{paddingLeft:16,whiteSpace:'nowrap'}}>Cliente</th>
+                  <th style={{whiteSpace:'nowrap'}}>CUIT</th>
+                  <th style={{whiteSpace:'nowrap'}}>Tipo</th>
+                  <th className="col-hide-tablet col-hide-mobile" style={{whiteSpace:'nowrap'}}>Servicio</th>
+                  <th className="col-hide-tablet col-hide-mobile" style={{whiteSpace:'nowrap'}}>Tributos</th>
+                  <th style={{whiteSpace:'nowrap'}}>Honorario</th>
+                  <th style={{whiteSpace:'nowrap'}}>Saldo</th>
+                  <th className="col-hide-mobile" style={{whiteSpace:'nowrap'}}>Estado</th>
+                  <th></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map(c=>(
                     <tr key={c.id} className="client-row" onClick={()=>openDetail(c)}>
-                      <td style={{paddingLeft:16}}>
-                        <div style={{display:'flex',alignItems:'center',gap:10}}>
-                          <div style={{width:34,height:34,borderRadius:9,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
-                          <div>
-                            <div style={{fontWeight:600,fontSize:14}}>{c.nombre}</div>
-                            {c.email&&<div style={{fontSize:11,color:'var(--gray)'}}>{c.email}</div>}
+                      <td style={{paddingLeft:16,maxWidth:180,overflow:'hidden'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div style={{width:32,height:32,borderRadius:8,flexShrink:0,background:'linear-gradient(135deg,var(--gold),var(--gold2))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:12,fontWeight:700,color:'var(--black)'}}>{initials(c.nombre)}</div>
+                          <div style={{minWidth:0}}>
+                            <div className="tbl-cliente-nombre">{c.nombre}</div>
+                            {c.email&&<div style={{fontSize:10,color:'var(--gray)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:140}}>{c.email}</div>}
                           </div>
                         </div>
                       </td>
-                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--gray)'}}>{c.cuit||'—'}</td>
-                      <td><span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`}>{c.tipo==='sociedad'?'🏢 Sociedad':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Exento'}</span></td>
-                      <td style={{fontSize:12,color:'var(--gray)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.servicio||'—'}</td>
-                      <td>{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} tributo{(c.tributos||[]).length>1?'s':''}</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
-                      <td style={{fontFamily:'JetBrains Mono,monospace',fontSize:13,fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
-                      <td>{c.saldoPendiente>0?<span style={{color:'var(--amber)',fontWeight:700,fontFamily:'JetBrains Mono,monospace',fontSize:12}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
-                      <td><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
+                      <td className="tbl-cuit">{c.cuit||'—'}</td>
+                      <td className="tbl-tipo" style={{whiteSpace:'nowrap'}}>
+                        <span className={`badge ${c.tipo==='sociedad'?'badge-blue':c.tipo==='responsable_inscripto'?'badge-amber':c.tipo==='monotributista'?'badge-gold':'badge-gray'}`} style={{fontSize:9,whiteSpace:'nowrap'}}>
+                          {c.tipo==='sociedad'?'🏢 Soc.':c.tipo==='responsable_inscripto'?'📊 RI':c.tipo==='monotributista'?'📋 Mono':'🔵 Ex.'}
+                        </span>
+                      </td>
+                      <td className="tbl-servicio col-hide-tablet col-hide-mobile">{c.servicio||'—'}</td>
+                      <td className="col-hide-tablet col-hide-mobile">{(c.tributos||[]).length>0?<span className="badge badge-blue" style={{fontSize:10}}>{(c.tributos||[]).length} trib.</span>:<span style={{color:'var(--gray2)',fontSize:12}}>—</span>}</td>
+                      <td className="tbl-mono" style={{fontWeight:600,color:'var(--gold)'}}>{c.honorario>0?fmtShort(c.honorario):'—'}</td>
+                      <td style={{whiteSpace:'nowrap'}}>{c.saldoPendiente>0?<span className="tbl-mono" style={{color:'var(--amber)',fontWeight:700}}>{fmtShort(c.saldoPendiente)}</span>:<span className="badge badge-green" style={{fontSize:10}}>✓</span>}</td>
+                      <td className="col-hide-mobile"><span className={`badge ${c.estado==='activo'?'badge-green':c.estado==='prospecto'?'badge-amber':'badge-red'}`} style={{fontSize:10}}>{c.estado}</span></td>
                     <td onClick={e=>e.stopPropagation()}>
                       <div className="action-btns">
                         <button className="btn-icon edit" title="Editar" onClick={e=>{e.stopPropagation();openEdit(c);}}>✏️</button>
@@ -4671,6 +4873,26 @@ function App() {
         <div {...S('finanzas')}><Finanzas cobros={cobros} setCobros={setCobros} facturas={facturas} setFacturas={setFacturas} /></div>
         <div {...S('catalogo')}><CatalogoTributos tributosCatalogo={tributosCatalogo} setTributosCatalogo={setTributosCatalogo} /></div>
       </main>
+
+      {/* ── BOTTOM NAV — solo visible en mobile (< 768px) via CSS ── */}
+      <nav className="bottom-nav">
+        {[
+          { id:'dashboard',    icon:'🏠', label:'Inicio' },
+          { id:'clientes',     icon:'👥', label:'Clientes' },
+          { id:'vencimientos', icon:'📅', label:'Venc.',  badge: vencimientos.filter(v=>!v.completado&&daysUntil(v.fecha)<=7).length||null },
+          { id:'cobros',       icon:'💰', label:'Cobros' },
+          { id:'tareas',       icon:'✅', label:'Tareas', badge: tareas.filter(t=>!t.completado).length||null },
+          { id:'notas',        icon:'📝', label:'Notas' },
+        ].map(item => (
+          <button key={item.id}
+            className={`bottom-nav-item ${section===item.id?'active':''}`}
+            onClick={()=>setSection(item.id)}>
+            {item.badge > 0 && <span className="bottom-nav-badge">{item.badge}</span>}
+            <span className="bottom-nav-icon">{item.icon}</span>
+            <span className="bottom-nav-label">{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
